@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import RedirectResponse
 
 from app.config import get_settings
+from app.routers.payments import router as payments_list_router
 from app.services.imap_service import test_imap_connection
 from app.services.payment_monitor import payment_monitor_loop, run_payment_poll_round
 from app.services.payment_monitor_state import PaymentMonitorState
@@ -56,6 +57,8 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+app.include_router(payments_list_router)
 
 
 @app.get("/")

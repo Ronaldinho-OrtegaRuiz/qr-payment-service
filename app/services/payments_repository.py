@@ -22,6 +22,11 @@ def _payments_table_ident() -> sql.Identifier:
     return sql.Identifier(t)
 
 
+def payments_table_ident() -> sql.Identifier:
+    """Nombre de tabla `payments` (desde PAYMENTS_TABLE) para consultas."""
+    return _payments_table_ident()
+
+
 def get_payments_timezone() -> ZoneInfo:
     name = (os.getenv("PAYMENTS_TZ") or "America/Bogota").strip()
     return ZoneInfo(name)
