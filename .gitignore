@@ -1,0 +1,19 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Sincronización IMAP / JSON / carga masiva a BD (local; no va al repo principal) ---
+scripts/bancolombia_fetch.py
+scripts/load_bancolombia_to_supabase.py
+scripts/sql/
+
+json_ignore/*
+!json_ignore/.gitkeep
