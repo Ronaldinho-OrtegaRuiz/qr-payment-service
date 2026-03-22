@@ -18,6 +18,18 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _bancol_search_phrases() -> tuple[str, ...]:
+    multi = (os.getenv("BANCOL_SEARCH_PHRASES") or "").strip()
+    if multi:
+        parts = tuple(p.strip() for p in multi.split(",") if p.strip())
+        if parts:
+            return parts
+    one = (os.getenv("BANCOL_SEARCH_PHRASE") or "").strip()
+    if one:
+        return (one,)
+    return ("DROGUERIA RICKY", "yessi")
+
+
 def _bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None or not str(raw).strip():
@@ -37,8 +49,10 @@ class Settings:
     imap_port: int = 993
     database_url: str = ""
     bancol_notifications_from: str = "alertasynotificaciones@an.notificacionesbancolombia.com"
-    bancol_search_phrase: str = "DROGUERIA RICKY"
+    bancol_search_phrases: tuple[str, ...] = ("DROGUERIA RICKY", "yessi")
     drogueria_id: int = 1
+    drogueria_secondary_id: int = 2
+    drogueria_secondary_match: str = "yessi"
     payments_monitor_interval_sec: int = 10
     payments_monitor_enabled: bool = False
 
@@ -64,10 +78,12 @@ def get_settings() -> Settings:
             os.getenv("BANCOL_IMAP_FROM", "").strip()
             or "alertasynotificaciones@an.notificacionesbancolombia.com"
         ),
-        bancol_search_phrase=(
-            os.getenv("BANCOL_SEARCH_PHRASE", "").strip() or "DROGUERIA RICKY"
-        ),
+        bancol_search_phrases=_bancol_search_phrases(),
         drogueria_id=_int_env("DROGUERIA_ID", 1),
+        drogueria_secondary_id=_int_env("DROGUERIA_SECONDARY_ID", 2),
+        drogueria_secondary_match=(
+            os.getenv("DROGUERIA_SECONDARY_MATCH", "").strip() or "yessi"
+        ),
         payments_monitor_interval_sec=max(
             5, _int_env("PAYMENTS_MONITOR_INTERVAL_SEC", 10)
         ),

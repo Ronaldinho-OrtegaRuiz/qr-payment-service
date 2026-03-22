@@ -5,6 +5,7 @@ from __future__ import annotations
 import email
 import imaplib
 import re
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from email.message import Message
 
@@ -53,22 +54,40 @@ def message_best_text(msg: Message) -> str:
     return raw
 
 
+def _imap_escape_atom(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _or_text_criteria(phrases: Sequence[str]) -> str:
+    cleaned = [_imap_escape_atom(p.strip()) for p in phrases if p and p.strip()]
+    if not cleaned:
+        return 'TEXT ""'
+    if len(cleaned) == 1:
+        return f'TEXT "{cleaned[0]}"'
+    clause = f'TEXT "{cleaned[0]}"'
+    for p in cleaned[1:]:
+        clause = f'(OR {clause} TEXT "{p}")'
+    return clause
+
+
 def imap_search_criteria(
     *,
     since_year: int,
     from_email: str,
-    contains_text: str,
+    contains_text_phrases: Sequence[str],
     min_uid_exclusive: int | None = None,
 ) -> str:
     since = f"1-Jan-{since_year}"
-    inner = f'SINCE {since} FROM "{from_email}" TEXT "{contains_text}"'
+    text_part = _or_text_criteria(contains_text_phrases)
+    from_esc = _imap_escape_atom(from_email)
+    inner = f"SINCE {since} FROM \"{from_esc}\" {text_part}"
     if min_uid_exclusive is not None and min_uid_exclusive >= 0:
         lo = min_uid_exclusive + 1
         return f"(UID {lo}:* {inner})"
     return f"({inner})"
 
 
-def mail_to_entry(uid: str, msg: Message, search_keyword: str) -> dict:
+def mail_to_entry(uid: str, msg: Message, search_phrases: Sequence[str]) -> dict:
     subject = msg.get("Subject", "") or ""
     date_hdr = msg.get("Date", "") or ""
     message_id = (msg.get("Message-ID") or "").strip()
@@ -81,7 +100,14 @@ def mail_to_entry(uid: str, msg: Message, search_keyword: str) -> dict:
         "subject": subject,
         "date_header": date_hdr,
         "parse_ok": parsed is not None,
-        "keyword_in_subject": search_keyword.upper() in subject.upper(),
+        "keyword_in_subject": (
+            bool([p for p in search_phrases if p and str(p).strip()])
+            and any(
+                str(p).strip().upper() in subject.upper()
+                for p in search_phrases
+                if p and str(p).strip()
+            )
+        ),
     }
     if parsed:
         entry["drogueria"] = parsed.drogueria
@@ -112,7 +138,7 @@ def poll_uids_after(
     settings: Settings,
     *,
     from_email: str,
-    search_text: str,
+    search_phrases: Sequence[str],
     last_uid: int,
 ) -> tuple[list[dict], int]:
     """
@@ -126,7 +152,7 @@ def poll_uids_after(
     criteria = imap_search_criteria(
         since_year=year,
         from_email=from_email,
-        contains_text=search_text,
+        contains_text_phrases=search_phrases,
         min_uid_exclusive=last_uid,
     )
 
@@ -147,7 +173,7 @@ def poll_uids_after(
             msg = fetch_rfc822_message(client, uid)
             if msg is None:
                 continue
-            entries.append(mail_to_entry(uid.decode(), msg, search_text))
+            entries.append(mail_to_entry(uid.decode(), msg, search_phrases))
             new_last = max(new_last, uid_int)
     finally:
         try:
@@ -162,14 +188,14 @@ def bootstrap_last_uid(
     settings: Settings,
     *,
     from_email: str,
-    search_text: str,
+    search_phrases: Sequence[str],
 ) -> int:
     """Mayor UID que cumple el criterio (sin devolver mensajes). Evita insertar histórico al arrancar."""
     year = datetime.now(timezone.utc).year
     criteria = imap_search_criteria(
         since_year=year,
         from_email=from_email,
-        contains_text=search_text,
+        contains_text_phrases=search_phrases,
         min_uid_exclusive=None,
     )
     client = imap_connect_and_login(settings)

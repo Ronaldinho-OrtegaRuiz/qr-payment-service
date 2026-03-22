@@ -12,6 +12,7 @@ import logging
 from app.config import Settings, get_settings
 from app.services.bancolombia.imap_mail import bootstrap_last_uid, poll_uids_after
 from app.services.payments.monitor_state import PaymentMonitorState
+from app.services.payments.drogueria_routing import resolve_drogueria_id_for_entry
 from app.services.payments.repository import (
     get_payments_timezone,
     insert_payment_if_new,
@@ -60,7 +61,7 @@ async def run_payment_poll_round(
                 bootstrap_last_uid,
                 settings,
                 from_email=settings.bancol_notifications_from,
-                search_text=settings.bancol_search_phrase,
+                search_phrases=settings.bancol_search_phrases,
             )
             bootstrapped = True
             message = (
@@ -73,12 +74,13 @@ async def run_payment_poll_round(
                 poll_uids_after,
                 settings,
                 from_email=settings.bancol_notifications_from,
-                search_text=settings.bancol_search_phrase,
+                search_phrases=settings.bancol_search_phrases,
                 last_uid=state.last_uid,
             )
             tz = get_payments_timezone()
             for entry in entries:
-                row = mail_entry_to_row(entry, settings.drogueria_id, tz)
+                did = resolve_drogueria_id_for_entry(settings, entry)
+                row = mail_entry_to_row(entry, did, tz)
                 if not row:
                     continue
                 saved = await asyncio.to_thread(insert_payment_if_new, settings, row)
