@@ -3,8 +3,14 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import RedirectResponse
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse, RedirectResponse
 
+from app.api_key import (
+    extract_api_key_from_request,
+    extract_api_key_from_websocket,
+    is_valid_api_key,
+)
 from app.config import get_settings
 from app.routers.payments import router as payments_list_router
 from app.services.imap_service import test_imap_connection
@@ -14,6 +20,15 @@ from app.services.payment_ws_hub import PaymentWsHub
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Solo documentación OpenAPI/Swagger (sin esto el navegador no puede cargar /openapi.json al abrir /docs).
+_DOCS_PUBLIC_PATHS = frozenset({"/docs", "/openapi.json", "/redoc"})
+
+
+def _path_is_public_docs(path: str) -> bool:
+    if path in _DOCS_PUBLIC_PATHS:
+        return True
+    return path.startswith("/docs/")
 
 
 @asynccontextmanager
@@ -61,9 +76,59 @@ app = FastAPI(
 app.include_router(payments_list_router)
 
 
+def custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})[
+        "ApiKeyAuth"
+    ] = {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Misma clave que la variable de entorno API_KEY.",
+    }
+    openapi_schema["security"] = [{"ApiKeyAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
+@app.middleware("http")
+async def require_api_key_middleware(request: Request, call_next):
+    if request.method == "GET" and request.url.path == "/":
+        return await call_next(request)
+    if _path_is_public_docs(request.url.path):
+        return await call_next(request)
+
+    settings = get_settings()
+    expected = settings.api_key
+    if not expected:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "API_KEY no está configurada en el servidor."},
+        )
+    provided = extract_api_key_from_request(request)
+    if not is_valid_api_key(provided, expected):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "API key inválida o ausente. Usa el header X-API-Key o Authorization: Bearer <clave>."},
+        )
+    return await call_next(request)
+
+
 @app.get("/")
-def root() -> RedirectResponse:
-    return RedirectResponse(url="/docs", status_code=307)
+def root(request: Request) -> RedirectResponse:
+    q = request.url.query
+    target = "/docs" + (f"?{q}" if q else "")
+    return RedirectResponse(url=target, status_code=307)
 
 
 @app.get("/health")
@@ -109,6 +174,16 @@ async def ws_payments(websocket: WebSocket) -> None:
     Recibe eventos JSON: {"type": "new_payment", "payment": {...}}
     cuando se inserta un pago nuevo en `payments` (misma lógica que la carga masiva).
     """
+    settings = get_settings()
+    expected = settings.api_key
+    if not expected:
+        await websocket.close(code=1011)
+        return
+    provided = extract_api_key_from_websocket(websocket)
+    if not is_valid_api_key(provided, expected):
+        await websocket.close(code=1008)
+        return
+
     hub: PaymentWsHub = websocket.app.state.payment_hub
     await hub.connect(websocket)
     try:

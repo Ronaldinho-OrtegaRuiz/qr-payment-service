@@ -30,6 +30,7 @@ def _bool_env(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
+    api_key: str
     gmail_account_email: str
     app_password_gmail_account: str
     imap_host: str = "imap.gmail.com"
@@ -51,6 +52,7 @@ def get_settings() -> Settings:
     )
     monitor_default = bool(db_url and os.getenv("GMAIL_ACCOUNT_EMAIL", "").strip())
     return Settings(
+        api_key=(os.getenv("API_KEY", "") or "").strip(),
         gmail_account_email=os.getenv("GMAIL_ACCOUNT_EMAIL", "").strip(),
         app_password_gmail_account=os.getenv("APP_PASSWORD_GMAIL_ACCOUNT", "")
         .replace(" ", "")
