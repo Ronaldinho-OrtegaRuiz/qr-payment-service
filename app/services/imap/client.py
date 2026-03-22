@@ -45,7 +45,6 @@ def test_imap_connection(settings: Settings) -> ImapTestResult:
         status, data = client.status("INBOX", "(MESSAGES)")
         count: int | None = None
         if status == "OK" and data and data[0]:
-            # b'INBOX (MESSAGES 123)'
             raw = data[0].decode(errors="replace")
             if "MESSAGES" in raw:
                 try:

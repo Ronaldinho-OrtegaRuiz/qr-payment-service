@@ -10,14 +10,14 @@ import asyncio
 import logging
 
 from app.config import Settings, get_settings
-from app.services.bancolombia_imap import bootstrap_last_uid, poll_uids_after
-from app.services.payment_monitor_state import PaymentMonitorState
-from app.services.payment_ws_hub import PaymentWsHub
-from app.services.payments_repository import (
+from app.services.bancolombia.imap_mail import bootstrap_last_uid, poll_uids_after
+from app.services.payments.monitor_state import PaymentMonitorState
+from app.services.payments.repository import (
     get_payments_timezone,
     insert_payment_if_new,
     mail_entry_to_row,
 )
+from app.services.payments.ws_hub import PaymentWsHub
 
 logger = logging.getLogger(__name__)
 

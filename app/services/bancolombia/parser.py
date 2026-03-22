@@ -11,7 +11,6 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-# Plantilla: comercio después de "Bancolombia:", nombre antes de " por $", monto, fecha/hora al final del bloque.
 _PAGO_PATTERN = re.compile(
     r"Bancolombia:\s*(?P<drogueria>[^,]+?)\s*,\s*"
     r"recibiste un pago de\s+(?P<nombre_cliente>.+?)\s+por\s*"

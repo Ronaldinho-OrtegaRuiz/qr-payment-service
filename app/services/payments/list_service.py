@@ -11,7 +11,7 @@ from psycopg import sql
 from psycopg.rows import dict_row
 
 from app.config import Settings
-from app.services.payments_repository import get_payments_timezone, payments_table_ident
+from app.services.payments.repository import get_payments_timezone, payments_table_ident
 
 
 def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:

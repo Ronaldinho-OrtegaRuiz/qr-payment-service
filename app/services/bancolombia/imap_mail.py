@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from email.message import Message
 
 from app.config import Settings
-from app.services.bancolombia_payment_parser import parse_bancolombia_pago_text
-from app.services.imap_service import imap_connect_and_login
+from app.services.bancolombia.parser import parse_bancolombia_pago_text
+from app.services.imap.client import imap_connect_and_login
 
 
 def html_to_searchable_text(html: str) -> str:

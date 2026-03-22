@@ -1,0 +1,1 @@
+"""Cliente IMAP genérico (Gmail)."""

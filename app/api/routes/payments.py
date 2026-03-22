@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.services.payments_list_service import list_payments
+from app.services.payments.list_service import list_payments
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -37,7 +37,10 @@ class PaymentListResponse(BaseModel):
 async def get_payments_list(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 10,
-    sort: Annotated[Literal["asc", "desc"], Query(description="Orden por fecha del pago (columna date)")] = "desc",
+    sort: Annotated[
+        Literal["asc", "desc"],
+        Query(description="Orden por fecha del pago (columna date)"),
+    ] = "desc",
     on_date: Annotated[
         date | None,
         Query(description="Día concreto (YYYY-MM-DD) en PAYMENTS_TZ; anula date_from/date_to"),
