@@ -1,4 +1,4 @@
-"""Esquema OpenAPI con seguridad por API key."""
+"""Esquema OpenAPI con seguridad por Bearer token (sin JWT)."""
 
 from __future__ import annotations
 
@@ -17,14 +17,13 @@ def setup_openapi_security(app: FastAPI) -> None:
             routes=app.routes,
         )
         openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})[
-            "ApiKeyAuth"
+            "BearerAuth"
         ] = {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "Misma clave que la variable de entorno API_KEY.",
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "Token",
+            "description": "Usa el header Authorization: Bearer <token> generado en POST /login.",
         }
-        openapi_schema["security"] = [{"ApiKeyAuth": []}]
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 

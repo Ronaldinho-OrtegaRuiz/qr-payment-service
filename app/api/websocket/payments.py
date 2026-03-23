@@ -1,11 +1,9 @@
-"""WebSocket: eventos de pagos nuevos."""
+"""WebSocket: eventos de pagos nuevos (requiere Authorization Bearer token)."""
 
 from __future__ import annotations
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from app.config import get_settings
-from app.core.api_key import extract_api_key_from_websocket, is_valid_api_key
 from app.services.payments.ws_hub import PaymentWsHub
 
 
@@ -16,13 +14,15 @@ def register_payments_websocket(app: FastAPI) -> None:
         Recibe eventos JSON: {"type": "new_payment", "payment": {...}}
         cuando se inserta un pago nuevo en `payments`.
         """
-        settings = get_settings()
-        expected = settings.api_key
-        if not expected:
-            await websocket.close(code=1011)
-            return
-        provided = extract_api_key_from_websocket(websocket)
-        if not is_valid_api_key(provided, expected):
+        auth = websocket.headers.get("authorization") or ""
+        token = None
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip() or None
+        if not token:
+            token = websocket.query_params.get("token") or None
+
+        tokens: set[str] = getattr(websocket.app.state, "auth_tokens", set())
+        if not token or token not in tokens:
             await websocket.close(code=1008)
             return
 

@@ -12,7 +12,7 @@ from app.api.openapi import setup_openapi_security
 from app.api.routes import register_http_routes
 from app.api.websocket.payments import register_payments_websocket
 from app.config import get_settings
-from app.middleware.api_key_auth import setup_api_key_middleware
+from app.middleware.bearer_auth import setup_bearer_auth_middleware
 from app.services.payments.monitor import payment_monitor_loop
 from app.services.payments.monitor_state import PaymentMonitorState
 from app.services.payments.ws_hub import PaymentWsHub
@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     app.state.payment_hub = PaymentWsHub()
     app.state.payment_monitor_state = PaymentMonitorState()
+    app.state.auth_tokens = set()
     stop = asyncio.Event()
     task: asyncio.Task | None = None
     s = get_settings()
@@ -69,7 +70,7 @@ def create_app() -> FastAPI:
 
     register_http_routes(app)
     register_payments_websocket(app)
-    setup_api_key_middleware(app)
     setup_openapi_security(app)
+    setup_bearer_auth_middleware(app)
 
     return app

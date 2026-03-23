@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from app.config import get_settings
 from app.services.imap.client import test_imap_connection
@@ -24,6 +27,35 @@ def root(request: Request) -> RedirectResponse:
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/login", openapi_extra={"security": []})
+async def login(request: Request, body: LoginBody) -> dict:
+    """
+    Login interno simple.
+
+    Devuelve un token en memoria con un formato para usar así:
+      Authorization: Bearer <token>
+    """
+    settings = get_settings()
+    if not settings.admin_user or not settings.admin_password:
+        raise HTTPException(
+            status_code=503,
+            detail="Faltan ADMIN_USER / ADMIN_PASSWORD en .env.",
+        )
+    if body.username != settings.admin_user or body.password != settings.admin_password:
+        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+
+    token = secrets.token_hex(32)
+    tokens: set[str] = getattr(request.app.state, "auth_tokens", set())
+    tokens.add(token)
+    request.app.state.auth_tokens = tokens
+    return {"token": token}
 
 
 @router.post("/payments/poll-now")

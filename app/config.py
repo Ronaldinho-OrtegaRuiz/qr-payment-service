@@ -45,6 +45,8 @@ class Settings:
     api_key: str
     gmail_account_email: str
     app_password_gmail_account: str
+    admin_user: str = ""
+    admin_password: str = ""
     imap_host: str = "imap.gmail.com"
     imap_port: int = 993
     database_url: str = ""
@@ -71,6 +73,8 @@ def get_settings() -> Settings:
         app_password_gmail_account=os.getenv("APP_PASSWORD_GMAIL_ACCOUNT", "")
         .replace(" ", "")
         .strip(),
+        admin_user=(os.getenv("ADMIN_USER", "") or "").strip(),
+        admin_password=(os.getenv("ADMIN_PASSWORD", "") or "").strip(),
         imap_host=(os.getenv("IMAP_HOST", "imap.gmail.com") or "imap.gmail.com").strip(),
         imap_port=_int_env("IMAP_PORT", 993),
         database_url=db_url,
