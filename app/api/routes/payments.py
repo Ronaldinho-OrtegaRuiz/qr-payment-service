@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -11,7 +11,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.services.payments.list_service import list_payments
+from app.services.payments.list_service import list_payments, list_payments_for_month
+from app.services.payments.repository import get_payments_timezone
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -31,6 +32,44 @@ class PaymentListResponse(BaseModel):
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
     pages: int = Field(ge=0)
+
+
+class PaymentMonthRow(BaseModel):
+    date: str
+    value: str
+
+
+@router.get("/by-month", response_model=list[PaymentMonthRow])
+async def get_payments_by_month(
+    month: Annotated[
+        int,
+        Query(ge=1, le=12, description="Mes: 1=enero … 12=diciembre (calendario PAYMENTS_TZ)"),
+    ],
+    year: Annotated[
+        int | None,
+        Query(ge=1900, le=2100, description="Año; si omites, año actual en PAYMENTS_TZ"),
+    ] = None,
+) -> list[PaymentMonthRow]:
+    settings = get_settings()
+    if not settings.database_url.strip():
+        raise HTTPException(status_code=503, detail="Falta DATABASE_URL en .env")
+
+    tz = get_payments_timezone()
+    y = year if year is not None else datetime.now(tz).year
+
+    try:
+        rows = await asyncio.to_thread(
+            list_payments_for_month,
+            settings,
+            month=month,
+            year=y,
+        )
+    except ValueError as e:
+        if str(e) == "missing_database_url":
+            raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return [PaymentMonthRow(**x) for x in rows]
 
 
 @router.get("", response_model=PaymentListResponse)

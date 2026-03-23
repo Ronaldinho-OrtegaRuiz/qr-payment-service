@@ -103,3 +103,40 @@ def list_payments(
 
     items = [_serialize_row(dict(r)) for r in rows]
     return items, total
+
+
+def list_payments_for_month(
+    settings: Settings,
+    *,
+    month: int,
+    year: int,
+) -> list[dict[str, Any]]:
+    """
+    Todos los pagos del mes calendario (1–12) en PAYMENTS_TZ, solo date y value.
+    Rango: [inicio del mes, inicio del mes siguiente).
+    """
+    url = (settings.database_url or "").strip()
+    if not url:
+        raise ValueError("missing_database_url")
+
+    tz = get_payments_timezone()
+    start = datetime(year, month, 1, 0, 0, 0, tzinfo=tz)
+    if month == 12:
+        end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=tz)
+    else:
+        end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=tz)
+
+    table = payments_table_ident()
+    col_date = sql.Identifier("date")
+    where = sql.SQL("{} >= %s AND {} < %s").format(col_date, col_date)
+    select_stmt = sql.SQL(
+        "SELECT {}, value FROM {} WHERE {} ORDER BY {} ASC"
+    ).format(col_date, table, where, col_date)
+    params: list[Any] = [start, end]
+
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(select_stmt, params)
+            rows = cur.fetchall()
+
+    return [_serialize_row(dict(r)) for r in rows]
