@@ -18,6 +18,16 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _cors_origins() -> tuple[str, ...]:
+    raw = (os.getenv("CORS_ORIGINS") or "").strip()
+    if raw:
+        return tuple(o.strip() for o in raw.split(",") if o.strip())
+    return (
+        "http://localhost:3000",
+        "https://drogueriasortegaqrs.vercel.app",
+    )
+
+
 def _bancol_search_phrases() -> tuple[str, ...]:
     multi = (os.getenv("BANCOL_SEARCH_PHRASES") or "").strip()
     if multi:
@@ -57,6 +67,10 @@ class Settings:
     drogueria_secondary_match: str = "yessi"
     payments_monitor_interval_sec: int = 10
     payments_monitor_enabled: bool = False
+    cors_origins: tuple[str, ...] = (
+        "http://localhost:3000",
+        "https://drogueriasortegaqrs.vercel.app",
+    )
 
 
 def get_settings() -> Settings:
@@ -92,4 +106,5 @@ def get_settings() -> Settings:
             5, _int_env("PAYMENTS_MONITOR_INTERVAL_SEC", 10)
         ),
         payments_monitor_enabled=_bool_env("PAYMENTS_MONITOR_ENABLED", monitor_default),
+        cors_origins=_cors_origins(),
     )

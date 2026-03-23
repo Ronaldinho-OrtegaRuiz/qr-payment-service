@@ -7,6 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.openapi import setup_openapi_security
 from app.api.routes import register_http_routes
@@ -66,6 +67,15 @@ def create_app() -> FastAPI:
         description="API para verificación de pagos vía correo (IMAP), QR y WebSocket.",
         version="0.2.0",
         lifespan=lifespan,
+    )
+
+    s = get_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(s.cors_origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     register_http_routes(app)
