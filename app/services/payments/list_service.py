@@ -110,6 +110,7 @@ def list_payments_for_month(
     *,
     month: int,
     year: int,
+    drogueria_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Todos los pagos del mes calendario (1–12) en PAYMENTS_TZ, solo date y value.
@@ -128,11 +129,17 @@ def list_payments_for_month(
 
     table = payments_table_ident()
     col_date = sql.Identifier("date")
-    where = sql.SQL("{} >= %s AND {} < %s").format(col_date, col_date)
+    conds: list[sql.SQL] = [
+        sql.SQL("{} >= %s AND {} < %s").format(col_date, col_date),
+    ]
+    params: list[Any] = [start, end]
+    if drogueria_id is not None:
+        conds.append(sql.SQL("drogueria_id = %s"))
+        params.append(drogueria_id)
+    where = sql.SQL(" AND ").join(conds)
     select_stmt = sql.SQL(
         "SELECT {}, value FROM {} WHERE {} ORDER BY {} ASC"
     ).format(col_date, table, where, col_date)
-    params: list[Any] = [start, end]
 
     with psycopg.connect(url) as conn:
         with conn.cursor(row_factory=dict_row) as cur:

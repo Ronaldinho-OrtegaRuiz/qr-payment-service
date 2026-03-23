@@ -49,6 +49,7 @@ async def get_payments_by_month(
         int | None,
         Query(ge=1900, le=2100, description="Año; si omites, año actual en PAYMENTS_TZ"),
     ] = None,
+    drogueria_id: Annotated[int | None, Query(description="Filtrar por droguería")] = None,
 ) -> list[PaymentMonthRow]:
     settings = get_settings()
     if not settings.database_url.strip():
@@ -63,6 +64,7 @@ async def get_payments_by_month(
             settings,
             month=month,
             year=y,
+            drogueria_id=drogueria_id,
         )
     except ValueError as e:
         if str(e) == "missing_database_url":
