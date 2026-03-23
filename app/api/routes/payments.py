@@ -14,7 +14,8 @@ from app.config import get_settings
 from app.services.payments.list_service import list_payments, list_payments_for_month
 from app.services.payments.repository import get_payments_timezone
 
-router = APIRouter(prefix="/payments", tags=["payments"])
+# Rutas completas (sin prefix + path "") para evitar choques de matching con subpaths.
+router = APIRouter(tags=["payments"])
 
 
 class PaymentItem(BaseModel):
@@ -39,7 +40,7 @@ class PaymentMonthRow(BaseModel):
     value: str
 
 
-@router.get("/by-month", response_model=list[PaymentMonthRow])
+@router.get("/payments/by-month", response_model=list[PaymentMonthRow])
 async def get_payments_by_month(
     month: Annotated[
         int,
@@ -74,7 +75,7 @@ async def get_payments_by_month(
     return [PaymentMonthRow(**x) for x in rows]
 
 
-@router.get("", response_model=PaymentListResponse)
+@router.get("/payments", response_model=PaymentListResponse)
 async def get_payments_list(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 10,
