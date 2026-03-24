@@ -40,6 +40,20 @@ def _bancol_search_phrases() -> tuple[str, ...]:
     return ("DROGUERIA RICKY", "yessi")
 
 
+def _login_users_map() -> dict[str, str]:
+    """Usuarios permitidos para POST /login: par ADMIN_* y par BASIC_* (cada uno opcional)."""
+    out: dict[str, str] = {}
+    u = (os.getenv("ADMIN_USER", "") or "").strip()
+    p = (os.getenv("ADMIN_PASSWORD", "") or "").strip()
+    if u and p:
+        out[u] = p
+    u2 = (os.getenv("BASIC_USER", "") or "").strip()
+    p2 = (os.getenv("BASIC_PASSWORD", "") or "").strip()
+    if u2 and p2:
+        out[u2] = p2
+    return out
+
+
 def _bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None or not str(raw).strip():
@@ -55,8 +69,7 @@ class Settings:
     api_key: str
     gmail_account_email: str
     app_password_gmail_account: str
-    admin_user: str = ""
-    admin_password: str = ""
+    login_users: dict[str, str]
     imap_host: str = "imap.gmail.com"
     imap_port: int = 993
     database_url: str = ""
@@ -75,7 +88,8 @@ class Settings:
 
 def get_settings() -> Settings:
     # utf-8-sig evita que un BOM al inicio del .env rompa la primera variable (p. ej. GMAIL_ACCOUNT_EMAIL).
-    load_dotenv(_ENV_FILE, override=True, encoding="utf-8-sig")
+    # override=False: en Railway/Render/etc. las variables del panel no las pisa un .env del repo o de la imagen.
+    load_dotenv(_ENV_FILE, override=False, encoding="utf-8-sig")
     db_url = (
         os.getenv("DATABASE_URL", "").strip()
         or os.getenv("SUPABASE_DATABASE_URL", "").strip()
@@ -87,8 +101,7 @@ def get_settings() -> Settings:
         app_password_gmail_account=os.getenv("APP_PASSWORD_GMAIL_ACCOUNT", "")
         .replace(" ", "")
         .strip(),
-        admin_user=(os.getenv("ADMIN_USER", "") or "").strip(),
-        admin_password=(os.getenv("ADMIN_PASSWORD", "") or "").strip(),
+        login_users=_login_users_map(),
         imap_host=(os.getenv("IMAP_HOST", "imap.gmail.com") or "imap.gmail.com").strip(),
         imap_port=_int_env("IMAP_PORT", 993),
         database_url=db_url,

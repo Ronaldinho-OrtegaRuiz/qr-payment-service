@@ -6,7 +6,7 @@ import secrets
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.config import get_settings
 from app.services.imap.client import test_imap_connection
@@ -33,6 +33,13 @@ class LoginBody(BaseModel):
     username: str
     password: str
 
+    @field_validator("username", "password", mode="before")
+    @classmethod
+    def strip_fields(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
 
 @router.post("/login", openapi_extra={"security": []})
 async def login(request: Request, body: LoginBody) -> dict:
@@ -43,12 +50,13 @@ async def login(request: Request, body: LoginBody) -> dict:
       Authorization: Bearer <token>
     """
     settings = get_settings()
-    if not settings.admin_user or not settings.admin_password:
+    if not settings.login_users:
         raise HTTPException(
             status_code=503,
-            detail="Faltan ADMIN_USER / ADMIN_PASSWORD en .env.",
+            detail="Sin usuarios de login: define ADMIN_USER/ADMIN_PASSWORD y/o BASIC_USER/BASIC_PASSWORD en .env.",
         )
-    if body.username != settings.admin_user or body.password != settings.admin_password:
+    expected = settings.login_users.get(body.username)
+    if expected is None or body.password != expected:
         raise HTTPException(status_code=401, detail="Credenciales inválidas.")
 
     token = secrets.token_hex(32)
