@@ -29,6 +29,7 @@ def list_payments(
     page: int,
     page_size: int,
     sort: Literal["asc", "desc"],
+    value_sort: Literal["asc", "desc"] | None = None,
     on_date: date | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -39,6 +40,7 @@ def list_payments(
     """
     Filtros de fecha interpretados en PAYMENTS_TZ (ej. America/Bogota), aplicados a la columna `date`.
     on_date tiene prioridad: ignora date_from / date_to ese día.
+    Orden: primero por `date` (sort); si value_sort no es None, desempate por columna `value`.
     """
     url = (settings.database_url or "").strip()
     if not url:
@@ -77,6 +79,14 @@ def list_payments(
 
     where_clause = sql.SQL(" AND ").join(conds) if conds else sql.SQL("TRUE")
     order_dir = sql.SQL("ASC" if sort == "asc" else "DESC")
+    col_value = sql.Identifier("value")
+    if value_sort is None:
+        order_clause = sql.SQL("ORDER BY {} {}").format(col_date, order_dir)
+    else:
+        value_dir = sql.SQL("ASC" if value_sort == "asc" else "DESC")
+        order_clause = sql.SQL("ORDER BY {} {}, {} {}").format(
+            col_date, order_dir, col_value, value_dir
+        )
     offset = (page - 1) * page_size
 
     count_stmt = sql.SQL("SELECT COUNT(*)::bigint FROM {} WHERE {}").format(
@@ -87,10 +97,10 @@ def list_payments(
         SELECT id, drogueria_id, message_id, client, value, {}
         FROM {}
         WHERE {}
-        ORDER BY {} {}
+        {}
         LIMIT %s OFFSET %s
         """
-    ).format(col_date, table, where_clause, col_date, order_dir)
+    ).format(col_date, table, where_clause, order_clause)
 
     with psycopg.connect(url) as conn:
         with conn.cursor(row_factory=dict_row) as cur:

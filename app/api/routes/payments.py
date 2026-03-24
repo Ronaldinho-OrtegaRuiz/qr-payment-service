@@ -81,8 +81,17 @@ async def get_payments_list(
     page_size: Annotated[int, Query(ge=1, le=100)] = 10,
     sort: Annotated[
         Literal["asc", "desc"],
-        Query(description="Orden por fecha del pago (columna date)"),
+        Query(description="Orden principal por fecha del pago (columna date)"),
     ] = "desc",
+    value_sort: Annotated[
+        Literal["asc", "desc"] | None,
+        Query(
+            description=(
+                "Orden secundario por importe (columna value); "
+                "omítelo para ordenar solo por fecha"
+            ),
+        ),
+    ] = None,
     on_date: Annotated[
         date | None,
         Query(description="Día concreto (YYYY-MM-DD) en PAYMENTS_TZ; anula date_from/date_to"),
@@ -110,6 +119,7 @@ async def get_payments_list(
             page=page,
             page_size=page_size,
             sort=sort,
+            value_sort=value_sort,
             on_date=on_date,
             date_from=date_from,
             date_to=date_to,
