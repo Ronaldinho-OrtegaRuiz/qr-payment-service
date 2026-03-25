@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import email
 import imaplib
-import logging
 import re
-import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from email.message import Message
@@ -14,8 +12,6 @@ from email.message import Message
 from app.config import Settings
 from app.services.bancolombia.parser import parse_bancolombia_pago_text
 from app.services.imap.client import imap_connect_and_login
-
-logger = logging.getLogger(__name__)
 
 
 def html_to_searchable_text(html: str) -> str:
@@ -174,84 +170,26 @@ def poll_uids_after(
     entries: list[dict] = []
     new_last = last_uid
 
-    t0 = time.perf_counter()
-    logger.info(
-        "[IMAP poll_uids_after] inicio last_uid=%s criterio=%r frases=%s",
-        last_uid,
-        criteria,
-        list(search_phrases),
-    )
-
-    t_conn = time.perf_counter()
     client = imap_connect_and_login(settings)
-    logger.info(
-        "[IMAP poll_uids_after] conectado + login en %.0f ms",
-        (time.perf_counter() - t_conn) * 1000,
-    )
     try:
-        t_sel = time.perf_counter()
         client.select("INBOX", readonly=True)
-        logger.info(
-            "[IMAP poll_uids_after] SELECT INBOX en %.0f ms",
-            (time.perf_counter() - t_sel) * 1000,
-        )
-
-        t_search = time.perf_counter()
         status, uids = _uid_search(client, criteria)
-        search_ms = (time.perf_counter() - t_search) * 1000
         if status != "OK" or not uids:
             uids = []
-            logger.info(
-                "[IMAP poll_uids_after] UID SEARCH status=%s uids=0 en %.0f ms",
-                status,
-                search_ms,
-            )
-        else:
-            logger.info(
-                "[IMAP poll_uids_after] UID SEARCH status=%s uids=%d en %.0f ms",
-                status,
-                len(uids),
-                search_ms,
-            )
 
         for uid in sorted(uids, key=lambda u: int(u.decode())):
             uid_str = uid.decode()
             uid_int = int(uid_str)
-            t_fetch = time.perf_counter()
             msg = fetch_rfc822_by_uid(client, uid_str)
-            fetch_ms = (time.perf_counter() - t_fetch) * 1000
             if msg is None:
-                logger.warning(
-                    "[IMAP poll_uids_after] UID %s UID FETCH falló o vacío (%.0f ms)",
-                    uid_int,
-                    fetch_ms,
-                )
                 continue
-            entry = mail_to_entry(uid_str, msg, search_phrases)
-            subj = (entry.get("subject") or "")[:120]
-            logger.info(
-                "[IMAP poll_uids_after] UID %s FETCH OK %.0f ms | parse_ok=%s keyword_in_subject=%s | subject=%r",
-                uid_int,
-                fetch_ms,
-                entry.get("parse_ok"),
-                entry.get("keyword_in_subject"),
-                subj,
-            )
-            entries.append(entry)
+            entries.append(mail_to_entry(uid_str, msg, search_phrases))
             new_last = max(new_last, uid_int)
     finally:
         try:
             client.logout()
         except imaplib.IMAP4.error:
             pass
-
-    total_ms = (time.perf_counter() - t0) * 1000
-    logger.info(
-        "[IMAP poll_uids_after] fin entries=%d new_last_uid=%s total %.0f ms",
-        len(entries),
-        new_last,
-        total_ms,
-    )
 
     return entries, new_last
 
@@ -270,32 +208,14 @@ def bootstrap_last_uid(
         contains_text_phrases=search_phrases,
         min_uid_exclusive=None,
     )
-    t0 = time.perf_counter()
-    logger.info(
-        "[IMAP bootstrap_last_uid] inicio criterio=%r frases=%s",
-        criteria,
-        list(search_phrases),
-    )
     client = imap_connect_and_login(settings)
     try:
         client.select("INBOX", readonly=True)
         status, uid_bytes = _uid_search(client, criteria)
         if status != "OK" or not uid_bytes:
-            logger.info(
-                "[IMAP bootstrap_last_uid] UID SEARCH sin resultados status=%s en %.0f ms",
-                status,
-                (time.perf_counter() - t0) * 1000,
-            )
             return 0
         uids = [int(u.decode()) for u in uid_bytes]
-        m = max(uids) if uids else 0
-        logger.info(
-            "[IMAP bootstrap_last_uid] SEARCH uids coincidentes=%d max_uid=%s total %.0f ms",
-            len(uids),
-            m,
-            (time.perf_counter() - t0) * 1000,
-        )
-        return m
+        return max(uids) if uids else 0
     finally:
         try:
             client.logout()
