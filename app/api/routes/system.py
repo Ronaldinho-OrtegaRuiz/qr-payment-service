@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import secrets
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator
@@ -15,6 +17,7 @@ from app.services.payments.monitor_state import PaymentMonitorState
 from app.services.payments.ws_hub import PaymentWsHub
 
 router = APIRouter(tags=["system"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/")
@@ -75,6 +78,10 @@ async def payments_poll_now(request: Request) -> dict:
     settings = get_settings()
     state: PaymentMonitorState = request.app.state.payment_monitor_state
     hub: PaymentWsHub = request.app.state.payment_hub
+    logger.info(
+        "[payments/poll-now] invocado manualmente | last_uid=%s",
+        state.last_uid,
+    )
     result = await run_payment_poll_round(settings, hub, state)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("message", "Error"))
