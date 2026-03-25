@@ -124,8 +124,19 @@ def mail_to_entry(uid: str, msg: Message, search_phrases: Sequence[str]) -> dict
     return entry
 
 
-def fetch_rfc822_message(client: imaplib.IMAP4_SSL, uid: bytes) -> Message | None:
-    st, fetch_data = client.fetch(uid, "(RFC822)")
+def _uid_search(client: imaplib.IMAP4_SSL, criteria: str) -> tuple[str, list[bytes]]:
+    """
+    UID SEARCH: la respuesta son UIDs reales. (SEARCH sin UID devuelve números de secuencia
+    del buzón y rompe el puntero last_uid vs FETCH.)
+    """
+    status, data = client.uid("SEARCH", criteria)
+    if status != "OK" or not data or not data[0]:
+        return status, []
+    return status, data[0].split()
+
+
+def fetch_rfc822_by_uid(client: imaplib.IMAP4_SSL, uid: str) -> Message | None:
+    st, fetch_data = client.uid("FETCH", uid, "(RFC822)")
     if st != "OK" or not fetch_data:
         return None
     raw = None
@@ -186,37 +197,37 @@ def poll_uids_after(
         )
 
         t_search = time.perf_counter()
-        status, data = client.search(None, criteria)
+        status, uids = _uid_search(client, criteria)
         search_ms = (time.perf_counter() - t_search) * 1000
-        if status != "OK" or not data or not data[0]:
-            uids: list[bytes] = []
+        if status != "OK" or not uids:
+            uids = []
             logger.info(
-                "[IMAP poll_uids_after] SEARCH status=%s uids=0 en %.0f ms",
+                "[IMAP poll_uids_after] UID SEARCH status=%s uids=0 en %.0f ms",
                 status,
                 search_ms,
             )
         else:
-            uids = data[0].split()
             logger.info(
-                "[IMAP poll_uids_after] SEARCH status=%s uids=%d en %.0f ms",
+                "[IMAP poll_uids_after] UID SEARCH status=%s uids=%d en %.0f ms",
                 status,
                 len(uids),
                 search_ms,
             )
 
         for uid in sorted(uids, key=lambda u: int(u.decode())):
-            uid_int = int(uid.decode())
+            uid_str = uid.decode()
+            uid_int = int(uid_str)
             t_fetch = time.perf_counter()
-            msg = fetch_rfc822_message(client, uid)
+            msg = fetch_rfc822_by_uid(client, uid_str)
             fetch_ms = (time.perf_counter() - t_fetch) * 1000
             if msg is None:
                 logger.warning(
-                    "[IMAP poll_uids_after] UID %s FETCH falló o vacío (%.0f ms)",
+                    "[IMAP poll_uids_after] UID %s UID FETCH falló o vacío (%.0f ms)",
                     uid_int,
                     fetch_ms,
                 )
                 continue
-            entry = mail_to_entry(uid.decode(), msg, search_phrases)
+            entry = mail_to_entry(uid_str, msg, search_phrases)
             subj = (entry.get("subject") or "")[:120]
             logger.info(
                 "[IMAP poll_uids_after] UID %s FETCH OK %.0f ms | parse_ok=%s keyword_in_subject=%s | subject=%r",
@@ -268,15 +279,15 @@ def bootstrap_last_uid(
     client = imap_connect_and_login(settings)
     try:
         client.select("INBOX", readonly=True)
-        status, data = client.search(None, criteria)
-        if status != "OK" or not data or not data[0]:
+        status, uid_bytes = _uid_search(client, criteria)
+        if status != "OK" or not uid_bytes:
             logger.info(
-                "[IMAP bootstrap_last_uid] SEARCH sin resultados status=%s en %.0f ms",
+                "[IMAP bootstrap_last_uid] UID SEARCH sin resultados status=%s en %.0f ms",
                 status,
                 (time.perf_counter() - t0) * 1000,
             )
             return 0
-        uids = [int(u.decode()) for u in data[0].split()]
+        uids = [int(u.decode()) for u in uid_bytes]
         m = max(uids) if uids else 0
         logger.info(
             "[IMAP bootstrap_last_uid] SEARCH uids coincidentes=%d max_uid=%s total %.0f ms",
