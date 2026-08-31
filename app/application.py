@@ -64,8 +64,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Sistema verificación pagos QR",
-        description="API para verificación de pagos vía correo (IMAP), QR, WebSocket y ventas por turnos.",
-        version="0.3.0",
+        description="API para verificación de pagos vía correo (IMAP), QR, WebSocket, ventas por turnos y estadísticas.",
+        version="0.4.0",
         lifespan=lifespan,
     )
 
