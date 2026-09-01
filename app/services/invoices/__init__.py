@@ -1,0 +1,1 @@
+"""Suppliers and invoices."""
