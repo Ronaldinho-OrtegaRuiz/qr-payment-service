@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.config import Settings
+from app.services.invoices import repository as invoices_repo
 from app.services.payments.repository import get_payments_timezone
 from app.services.sales import repository as sales_repo
 from app.services.stats import repository as payments_repo
@@ -316,7 +317,13 @@ def _sales_kpis_month(
     }
 
 
-def _compare(qr_total: str, sales_total: str) -> dict[str, Any]:
+def _compare(
+    qr_total: str,
+    sales_total: str,
+    *,
+    invoices_issued: str,
+    invoices_open_now: str,
+) -> dict[str, Any]:
     q = Decimal(qr_total)
     s = Decimal(sales_total)
     share = _ratio(q / s) if s > 0 else None
@@ -325,6 +332,8 @@ def _compare(qr_total: str, sales_total: str) -> dict[str, Any]:
         "sales_total": sales_total,
         "delta": _money(s - q),
         "qr_share": share,
+        "invoices_issued": invoices_issued,
+        "invoices_open_now": invoices_open_now,
     }
 
 
@@ -401,6 +410,25 @@ def get_month_stats(
     pay = _index_payments(pay_rows, tz)
     sales = _index_sales(sale_rows)
 
+    from app.services.stats.invoice_agg import build_month_invoice_block
+
+    inv_period = invoices_repo.list_invoices(
+        settings,
+        drogueria_id=drogueria_id,
+        date_from=prev.first,
+        date_to=window.last,
+    )
+    inv_open = invoices_repo.list_open_invoices(
+        settings, drogueria_id=drogueria_id
+    )
+    invoices = build_month_invoice_block(
+        period_rows=inv_period,
+        open_rows=inv_open,
+        window=window,
+        prev=prev,
+        today=today,
+    )
+
     qr_kpis = _qr_kpis_month(pay, window.kpi_dates, pay, prev.kpi_dates)
     sales_kpis = _sales_kpis_month(
         sales, window.kpi_dates, sales, prev.kpi_dates, shift_count
@@ -420,7 +448,13 @@ def get_month_stats(
             "kpis": sales_kpis,
             "series": _sales_series_month(sales, window.series_dates, shift_count),
         },
-        "compare": _compare(qr_kpis["total_value"], sales_kpis["total_value"]),
+        "invoices": invoices,
+        "compare": _compare(
+            qr_kpis["total_value"],
+            sales_kpis["total_value"],
+            invoices_issued=invoices["kpis"]["issued_total"],
+            invoices_open_now=invoices["snapshot"]["open_now_total"],
+        ),
     }
 
 
@@ -483,6 +517,25 @@ def get_year_stats(
     )
     pay = _index_payments(pay_rows, tz)
     sales = _index_sales(sale_rows)
+
+    from app.services.stats.invoice_agg import build_year_invoice_block
+
+    inv_period = invoices_repo.list_invoices(
+        settings,
+        drogueria_id=drogueria_id,
+        date_from=date(year - 1, 1, 1),
+        date_to=date(year, 12, 31),
+    )
+    inv_open = invoices_repo.list_open_invoices(
+        settings, drogueria_id=drogueria_id
+    )
+    invoices = build_year_invoice_block(
+        period_rows=inv_period,
+        open_rows=inv_open,
+        window=window,
+        prev=prev,
+        today=today,
+    )
 
     qr_vals, qr_counts, _ = _month_totals_qr(pay, year, window.series_months)
     prev_qr_vals, prev_qr_counts, _ = _month_totals_qr(pay, year - 1, prev.kpi_months)
@@ -575,5 +628,11 @@ def get_year_stats(
         "divisor_months": divisor,
         "qr": {"kpis": qr_kpis, "series": qr_series},
         "sales": {"kpis": sales_kpis, "series": sales_series},
-        "compare": _compare(qr_kpis["total_value"], sales_kpis["total_value"]),
+        "invoices": invoices,
+        "compare": _compare(
+            qr_kpis["total_value"],
+            sales_kpis["total_value"],
+            invoices_issued=invoices["kpis"]["issued_total"],
+            invoices_open_now=invoices["snapshot"]["open_now_total"],
+        ),
     }

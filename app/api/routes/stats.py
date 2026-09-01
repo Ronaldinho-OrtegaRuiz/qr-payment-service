@@ -85,6 +85,108 @@ class CompareDto(BaseModel):
     sales_total: str
     delta: str
     qr_share: str | None = None
+    invoices_issued: str
+    invoices_open_now: str
+
+
+class InvoiceVsPreviousDto(BaseModel):
+    count_pct: str | None = None
+    value_pct: str | None = None
+
+
+class SupplierPeriodKpi(BaseModel):
+    supplier_id: int
+    supplier: str
+    issued_count: int
+    issued_total: str
+    paid_total: str
+    open_total: str
+    overdue_total: str
+
+
+class SupplierOpenKpi(BaseModel):
+    supplier_id: int
+    supplier: str
+    open_total: str
+    overdue_total: str
+
+
+class AgingBucket(BaseModel):
+    count: int
+    total: str
+
+
+class InvoiceAgingDto(BaseModel):
+    not_due: AgingBucket
+    d1_7: AgingBucket
+    d8_30: AgingBucket
+    d31_plus: AgingBucket
+
+
+class InvoiceSnapshotDto(BaseModel):
+    open_now_count: int
+    open_now_total: str
+    overdue_now_count: int
+    overdue_now_total: str
+    due_7d_count: int
+    due_7d_total: str
+    aging: InvoiceAgingDto
+    by_supplier_open: list[SupplierOpenKpi]
+
+
+class InvoiceMonthKpis(BaseModel):
+    issued_count: int
+    issued_total: str
+    avg_amount: str | None = None
+    paid_count: int
+    paid_total: str
+    open_count: int
+    open_total: str
+    overdue_count: int
+    overdue_total: str
+    vs_previous: InvoiceVsPreviousDto
+    by_supplier: list[SupplierPeriodKpi]
+
+
+class InvoiceDayPoint(BaseModel):
+    date: date
+    count: int
+    amount: str
+
+
+class InvoiceMonthBlock(BaseModel):
+    kpis: InvoiceMonthKpis
+    series: list[InvoiceDayPoint]
+    snapshot: InvoiceSnapshotDto
+
+
+class InvoiceYearKpis(BaseModel):
+    issued_count: int
+    issued_total: str
+    avg_amount: str | None = None
+    avg_issued_per_month: str
+    paid_count: int
+    paid_total: str
+    open_count: int
+    open_total: str
+    overdue_count: int
+    overdue_total: str
+    best_month: ExtremeMonth | None = None
+    worst_month: ExtremeMonth | None = None
+    vs_previous: InvoiceVsPreviousDto
+    by_supplier: list[SupplierPeriodKpi]
+
+
+class InvoiceYearPoint(BaseModel):
+    month: int
+    count: int
+    amount: str
+
+
+class InvoiceYearBlock(BaseModel):
+    kpis: InvoiceYearKpis
+    series: list[InvoiceYearPoint]
+    snapshot: InvoiceSnapshotDto
 
 
 class QrMonthBlock(BaseModel):
@@ -106,6 +208,7 @@ class MonthStatsDto(BaseModel):
     divisor_days: int
     qr: QrMonthBlock
     sales: SalesMonthBlock
+    invoices: InvoiceMonthBlock
     compare: CompareDto
 
 
@@ -159,6 +262,7 @@ class YearStatsDto(BaseModel):
     divisor_months: int
     qr: QrYearBlock
     sales: SalesYearBlock
+    invoices: InvoiceYearBlock
     compare: CompareDto
 
 

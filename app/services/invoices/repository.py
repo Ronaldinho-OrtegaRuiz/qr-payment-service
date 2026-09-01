@@ -202,3 +202,26 @@ def update_invoice_status(
                 return None
         conn.commit()
     return get_invoice(settings, invoice_id)
+
+
+def list_open_invoices(
+    settings: Settings, *, drogueria_id: int
+) -> list[dict[str, Any]]:
+    """Stored status pending (overdue is derived on read)."""
+    url = _require_url(settings)
+    stmt = sql.SQL(
+        """
+        SELECT
+            i.id, i.drogueria_id, i.supplier_id, s.name AS supplier,
+            i.invoice_number, i.invoice_date, i.due_date,
+            i.amount, i.status, i.created_at, i.updated_at
+        FROM {} i
+        JOIN {} s ON s.id = i.supplier_id
+        WHERE i.drogueria_id = %s AND i.status = 'pending'
+        ORDER BY i.due_date ASC, i.id ASC
+        """
+    ).format(_invoices_ident(), _suppliers_ident())
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(stmt, (drogueria_id,))
+            return [dict(r) for r in cur.fetchall()]
