@@ -35,14 +35,24 @@ def _invoices_ident() -> sql.Identifier:
     return sql.Identifier(INVOICES_TABLE)
 
 
-def list_suppliers(settings: Settings) -> list[dict[str, Any]]:
+def list_suppliers(
+    settings: Settings, *, q: str | None = None
+) -> list[dict[str, Any]]:
     url = _require_url(settings)
-    stmt = sql.SQL(
-        "SELECT id, name, created_at FROM {} ORDER BY name ASC"
-    ).format(_suppliers_ident())
+    needle = (q or "").strip()
+    if needle:
+        stmt = sql.SQL(
+            "SELECT id, name, created_at FROM {} WHERE name ILIKE %s ORDER BY name ASC"
+        ).format(_suppliers_ident())
+        params: tuple[Any, ...] = (f"%{needle}%",)
+    else:
+        stmt = sql.SQL(
+            "SELECT id, name, created_at FROM {} ORDER BY name ASC"
+        ).format(_suppliers_ident())
+        params = ()
     with psycopg.connect(url) as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(stmt)
+            cur.execute(stmt, params)
             return [dict(r) for r in cur.fetchall()]
 
 
@@ -182,21 +192,32 @@ def get_invoice(settings: Settings, invoice_id: int) -> dict[str, Any] | None:
             return dict(rec) if rec else None
 
 
-def update_invoice_status(
-    settings: Settings, invoice_id: int, status: str
+def update_invoice(
+    settings: Settings,
+    invoice_id: int,
+    *,
+    status: str | None = None,
+    amount: Decimal | None = None,
 ) -> dict[str, Any] | None:
+    sets: list[sql.SQL] = []
+    params: list[Any] = []
+    if status is not None:
+        sets.append(sql.SQL("status = %s"))
+        params.append(status)
+    if amount is not None:
+        sets.append(sql.SQL("amount = %s"))
+        params.append(amount)
+    if not sets:
+        return get_invoice(settings, invoice_id)
+    params.append(invoice_id)
     url = _require_url(settings)
     with psycopg.connect(url) as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            upd = sql.SQL(
-                """
-                UPDATE {}
-                SET status = %s
-                WHERE id = %s
-                RETURNING id
-                """
-            ).format(_invoices_ident())
-            cur.execute(upd, (status, invoice_id))
+            upd = sql.SQL("UPDATE {} SET {} WHERE id = %s RETURNING id").format(
+                _invoices_ident(),
+                sql.SQL(", ").join(sets),
+            )
+            cur.execute(upd, params)
             rec = cur.fetchone()
             if rec is None:
                 return None

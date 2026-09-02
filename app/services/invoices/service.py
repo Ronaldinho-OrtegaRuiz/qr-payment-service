@@ -98,8 +98,10 @@ def _require_drogueria(settings: Settings, drogueria_id: int) -> None:
         raise InvoiceError("drogueria_not_found", "Drogueria not found")
 
 
-def list_suppliers_dto(settings: Settings) -> list[dict[str, Any]]:
-    rows = repo.list_suppliers(settings)
+def list_suppliers_dto(
+    settings: Settings, *, q: str | None = None
+) -> list[dict[str, Any]]:
+    rows = repo.list_suppliers(settings, q=q)
     return [{"id": int(r["id"]), "name": r["name"]} for r in rows]
 
 
@@ -235,18 +237,31 @@ def get_invoice_dto(settings: Settings, invoice_id: int) -> dict[str, Any]:
     return _dto(row, _today())
 
 
-def set_invoice_status(
-    settings: Settings, invoice_id: int, status: str
+def update_invoice_fields(
+    settings: Settings,
+    invoice_id: int,
+    *,
+    status: str | None = None,
+    amount: Any = None,
 ) -> dict[str, Any]:
-    status = status.strip().lower()
-    if status == "overdue":
-        raise InvoiceError(
-            "invalid_status",
-            "overdue is assigned automatically; set paid or pending",
-        )
-    if status not in STORED_STATUSES:
-        raise InvoiceError("invalid_status", "status must be pending or paid")
-    row = repo.update_invoice_status(settings, invoice_id, status)
+    stored_status: str | None = None
+    if status is not None:
+        stored_status = status.strip().lower()
+        if stored_status == "overdue":
+            raise InvoiceError(
+                "invalid_status",
+                "overdue is assigned automatically; set paid or pending",
+            )
+        if stored_status not in STORED_STATUSES:
+            raise InvoiceError("invalid_status", "status must be pending or paid")
+    parsed_amount: Decimal | None = None
+    if amount is not None:
+        parsed_amount = parse_money(amount)
+    if stored_status is None and parsed_amount is None:
+        raise InvoiceError("empty_patch", "Send status and/or amount")
+    row = repo.update_invoice(
+        settings, invoice_id, status=stored_status, amount=parsed_amount
+    )
     if row is None:
         raise InvoiceError("invoice_not_found", "Invoice not found")
     return _dto(row, _today())

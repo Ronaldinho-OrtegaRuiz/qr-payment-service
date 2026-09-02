@@ -18,7 +18,7 @@ from app.services.invoices.service import (
     list_invoices_dto,
     list_suppliers_dto,
     parse_money,
-    set_invoice_status,
+    update_invoice_fields,
 )
 
 router = APIRouter(tags=["invoices"])
@@ -77,8 +77,25 @@ class InvoiceBatchBody(BaseModel):
     items: list[InvoiceCreateItem] = Field(min_length=1, max_length=50)
 
 
-class InvoiceStatusBody(BaseModel):
-    status: Literal["pending", "paid"]
+class InvoiceUpdateBody(BaseModel):
+    status: Literal["pending", "paid"] | None = None
+    amount: str | Decimal | None = None
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def parse_amount(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        try:
+            return str(parse_money(v))
+        except InvoiceError as e:
+            raise ValueError(e.message) from e
+
+    @model_validator(mode="after")
+    def at_least_one(self) -> InvoiceUpdateBody:
+        if self.status is None and self.amount is None:
+            raise ValueError("Send status and/or amount")
+        return self
 
 
 def _http(e: InvoiceError) -> HTTPException:
@@ -97,10 +114,12 @@ def _db_or_503() -> None:
 
 
 @router.get("/suppliers", response_model=list[SupplierItem])
-async def get_suppliers() -> list[SupplierItem]:
+async def get_suppliers(
+    q: Annotated[str | None, Query(description="Name contains, case-insensitive")] = None,
+) -> list[SupplierItem]:
     _db_or_503()
     try:
-        rows = await asyncio.to_thread(list_suppliers_dto, get_settings())
+        rows = await asyncio.to_thread(list_suppliers_dto, get_settings(), q=q)
     except ValueError as e:
         if str(e) == "missing_database_url":
             raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
@@ -181,12 +200,16 @@ async def get_invoice(
 @router.patch("/invoices/{invoice_id}", response_model=InvoiceItem)
 async def patch_invoice(
     invoice_id: Annotated[int, Path(ge=1)],
-    body: InvoiceStatusBody,
+    body: InvoiceUpdateBody,
 ) -> InvoiceItem:
     _db_or_503()
     try:
         row = await asyncio.to_thread(
-            set_invoice_status, get_settings(), invoice_id, body.status
+            update_invoice_fields,
+            get_settings(),
+            invoice_id,
+            status=body.status,
+            amount=body.amount,
         )
     except InvoiceError as e:
         raise _http(e) from e

@@ -210,6 +210,41 @@ def _extreme_months(
     )
 
 
+def _extreme_shifts(
+    shift_totals: list[Decimal],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    scored = [(i + 1, t) for i, t in enumerate(shift_totals) if t > 0]
+    if not scored:
+        return None, None
+    mn = min(scored, key=lambda x: x[1])
+    mx = max(scored, key=lambda x: x[1])
+    return (
+        {"shift_no": mn[0], "value": _money(mn[1])},
+        {"shift_no": mx[0], "value": _money(mx[1])},
+    )
+
+
+def _extreme_shift_days(
+    dates: list[date],
+    buckets: dict[date, DayBucket],
+    shift_no: int,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    scored: list[tuple[date, Decimal]] = []
+    for d in dates:
+        b = buckets.get(d)
+        amt = b.shifts.get(shift_no) if b else None
+        if amt is not None and amt > 0:
+            scored.append((d, amt))
+    if not scored:
+        return None, None
+    mn = min(scored, key=lambda x: x[1])
+    mx = max(scored, key=lambda x: x[1])
+    return (
+        {"date": mn[0], "value": _money(mn[1])},
+        {"date": mx[0], "value": _money(mx[1])},
+    )
+
+
 def _qr_kpis_month(
     buckets: dict[date, DayBucket],
     kpi_dates: list[date],
@@ -291,16 +326,20 @@ def _sales_kpis_month(
             prev_total += b.sales_total
 
     min_day, max_day = _extreme_days(kpi_dates, buckets, sales=True)
+    worst_shift, best_shift = _extreme_shifts(shift_totals)
     by_shift = []
     for n in range(1, shift_count + 1):
         filled = shift_filled[n - 1]
         t = shift_totals[n - 1]
+        worst_day, best_day = _extreme_shift_days(kpi_dates, buckets, n)
         by_shift.append(
             {
                 "shift_no": n,
                 "total": _money(t),
                 "avg": _money(t / Decimal(filled)) if filled else None,
                 "filled_days": filled,
+                "best_day": best_day,
+                "worst_day": worst_day,
             }
         )
     return {
@@ -310,6 +349,8 @@ def _sales_kpis_month(
         "max_day": max_day,
         "days_filled": days_filled,
         "days_empty": max(0, len(kpi_dates) - days_filled),
+        "best_shift": best_shift,
+        "worst_shift": worst_shift,
         "by_shift": by_shift,
         "vs_previous": {
             "value_pct": _pct(total, prev_total),
@@ -563,6 +604,9 @@ def get_year_stats(
 
     shift_totals = [ZERO] * shift_count
     shift_filled = [0] * shift_count
+    shift_month_vals: list[dict[int, Decimal]] = [
+        {m: ZERO for m in window.kpi_months} for _ in range(shift_count)
+    ]
     for d, b in sales.items():
         if d.year != year or d.month not in window.kpi_months:
             continue
@@ -571,17 +615,22 @@ def get_year_stats(
             if amt is not None and amt > 0:
                 shift_totals[n - 1] += amt
                 shift_filled[n - 1] += 1
+                shift_month_vals[n - 1][d.month] += amt
 
+    worst_shift, best_shift = _extreme_shifts(shift_totals)
     by_shift = []
     for n in range(1, shift_count + 1):
         filled = shift_filled[n - 1]
         t = shift_totals[n - 1]
+        worst_m, best_m = _extreme_months(window.kpi_months, shift_month_vals[n - 1])
         by_shift.append(
             {
                 "shift_no": n,
                 "total": _money(t),
                 "avg": _money(t / Decimal(filled)) if filled else None,
                 "filled_days": filled,
+                "best_month": best_m,
+                "worst_month": worst_m,
             }
         )
 
@@ -604,6 +653,8 @@ def get_year_stats(
         "avg_value_per_month": _money(sales_total / Decimal(divisor)),
         "best_month": best_s,
         "worst_month": worst_s,
+        "best_shift": best_shift,
+        "worst_shift": worst_shift,
         "by_shift": by_shift,
         "vs_previous": {"value_pct": _pct(sales_total, prev_sales_total)},
     }

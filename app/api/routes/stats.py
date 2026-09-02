@@ -48,11 +48,27 @@ class SalesDayPoint(BaseModel):
     shifts: list[SalesShiftPoint]
 
 
-class ShiftKpi(BaseModel):
+class ExtremeShift(BaseModel):
+    shift_no: int
+    value: str
+
+
+class ShiftMonthKpi(BaseModel):
     shift_no: int
     total: str
     avg: str | None = None
     filled_days: int
+    best_day: ExtremeDay | None = None
+    worst_day: ExtremeDay | None = None
+
+
+class ShiftYearKpi(BaseModel):
+    shift_no: int
+    total: str
+    avg: str | None = None
+    filled_days: int
+    best_month: ExtremeMonth | None = None
+    worst_month: ExtremeMonth | None = None
 
 
 class QrMonthKpis(BaseModel):
@@ -76,7 +92,9 @@ class SalesMonthKpis(BaseModel):
     max_day: ExtremeDay | None = None
     days_filled: int
     days_empty: int
-    by_shift: list[ShiftKpi]
+    best_shift: ExtremeShift | None = None
+    worst_shift: ExtremeShift | None = None
+    by_shift: list[ShiftMonthKpi]
     vs_previous: VsPreviousDto
 
 
@@ -240,7 +258,9 @@ class SalesYearKpis(BaseModel):
     avg_value_per_month: str
     best_month: ExtremeMonth | None = None
     worst_month: ExtremeMonth | None = None
-    by_shift: list[ShiftKpi]
+    best_shift: ExtremeShift | None = None
+    worst_shift: ExtremeShift | None = None
+    by_shift: list[ShiftYearKpi]
     vs_previous: VsPreviousDto
 
 
