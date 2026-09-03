@@ -66,6 +66,17 @@ async def login(request: Request, body: LoginBody) -> dict:
     return {"token": token}
 
 
+@router.post("/logout")
+async def logout(request: Request) -> dict[str, bool]:
+    """Invalida el Bearer actual. El front debe borrar el token local."""
+    auth = request.headers.get("authorization") or ""
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    tokens: set[str] = getattr(request.app.state, "auth_tokens", set())
+    tokens.discard(token)
+    request.app.state.auth_tokens = tokens
+    return {"ok": True}
+
+
 @router.post("/payments/poll-now")
 async def payments_poll_now(request: Request) -> dict:
     """

@@ -237,12 +237,24 @@ def get_invoice_dto(settings: Settings, invoice_id: int) -> dict[str, Any]:
     return _dto(row, _today())
 
 
+def _resolve_supplier_id(cur, *, supplier_id: int | None, name: str) -> int:
+    if supplier_id is not None:
+        rec = repo.get_supplier_by_id(cur, supplier_id=int(supplier_id))
+        if rec is None:
+            raise InvoiceError("supplier_not_found", "Supplier not found")
+        return int(rec["id"])
+    rec = repo.get_or_create_supplier(cur, name=name)
+    return int(rec["id"])
+
+
 def update_invoice_fields(
     settings: Settings,
     invoice_id: int,
     *,
     status: str | None = None,
     amount: Any = None,
+    supplier_id: int | None = None,
+    supplier: str | None = None,
 ) -> dict[str, Any]:
     stored_status: str | None = None
     if status is not None:
@@ -257,11 +269,37 @@ def update_invoice_fields(
     parsed_amount: Decimal | None = None
     if amount is not None:
         parsed_amount = parse_money(amount)
-    if stored_status is None and parsed_amount is None:
-        raise InvoiceError("empty_patch", "Send status and/or amount")
-    row = repo.update_invoice(
-        settings, invoice_id, status=stored_status, amount=parsed_amount
-    )
+    name = (supplier or "").strip()
+    has_supplier = supplier_id is not None or bool(name)
+    if stored_status is None and parsed_amount is None and not has_supplier:
+        raise InvoiceError(
+            "empty_patch",
+            "Send status, amount and/or supplier",
+        )
+
+    resolved_sid: int | None = None
+    if has_supplier:
+        url = repo.require_url(settings)
+        with psycopg.connect(url) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                resolved_sid = _resolve_supplier_id(
+                    cur, supplier_id=supplier_id, name=name
+                )
+            conn.commit()
+
+    try:
+        row = repo.update_invoice(
+            settings,
+            invoice_id,
+            status=stored_status,
+            amount=parsed_amount,
+            supplier_id=resolved_sid,
+        )
+    except pg_errors.UniqueViolation as e:
+        raise InvoiceError(
+            "duplicate_invoice",
+            "invoice number already exists for that supplier",
+        ) from e
     if row is None:
         raise InvoiceError("invoice_not_found", "Invoice not found")
     return _dto(row, _today())

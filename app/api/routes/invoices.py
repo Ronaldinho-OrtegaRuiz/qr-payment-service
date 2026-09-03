@@ -80,6 +80,15 @@ class InvoiceBatchBody(BaseModel):
 class InvoiceUpdateBody(BaseModel):
     status: Literal["pending", "paid"] | None = None
     amount: str | Decimal | None = None
+    supplier_id: int | None = Field(default=None, ge=1)
+    supplier: str | None = None
+
+    @field_validator("supplier", mode="before")
+    @classmethod
+    def strip_supplier(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip() or None
+        return v
 
     @field_validator("amount", mode="before")
     @classmethod
@@ -93,8 +102,13 @@ class InvoiceUpdateBody(BaseModel):
 
     @model_validator(mode="after")
     def at_least_one(self) -> InvoiceUpdateBody:
-        if self.status is None and self.amount is None:
-            raise ValueError("Send status and/or amount")
+        if (
+            self.status is None
+            and self.amount is None
+            and self.supplier_id is None
+            and not self.supplier
+        ):
+            raise ValueError("Send status, amount and/or supplier")
         return self
 
 
@@ -210,6 +224,8 @@ async def patch_invoice(
             invoice_id,
             status=body.status,
             amount=body.amount,
+            supplier_id=body.supplier_id,
+            supplier=body.supplier,
         )
     except InvoiceError as e:
         raise _http(e) from e
