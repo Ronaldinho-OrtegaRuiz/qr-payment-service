@@ -10,7 +10,7 @@ from psycopg import errors as pg_errors
 from app.config import Settings
 from app.services.sales.repository import get_drogueria
 from app.services.schedule import repository as repo
-from app.services.schedule.slots import get_slot, schedule_count, schedule_slot_defs, slot_public
+from app.services.schedule.slots import get_slot, schedule_count, schedule_slot_defs
 
 MAX_RANGE_DAYS = 92
 MAX_BATCH = 100
@@ -161,7 +161,6 @@ def list_schedule_range(
     while cursor <= date_to:
         shifts = []
         for slot in defs:
-            pub = slot_public(slot)
             first = slot["legs"][0]
             cell = by_cell.get(
                 (cursor + timedelta(days=int(first["day_offset"])), int(first["shift_no"]))
@@ -169,8 +168,6 @@ def list_schedule_range(
             shifts.append(
                 {
                     "shift_no": slot["slot_no"],
-                    "label": pub["label"],
-                    "sales_shifts": pub["sales_shifts"],
                     "employee_id": cell["employee_id"] if cell else None,
                     "employee": cell["employee"] if cell else None,
                 }
@@ -182,7 +179,6 @@ def list_schedule_range(
         "drogueria_id": drogueria_id,
         "shift_count": shift_count,
         "schedule_count": len(defs),
-        "slots": [slot_public(s) for s in defs],
         "date_from": date_from,
         "date_to": date_to,
         "days": days,

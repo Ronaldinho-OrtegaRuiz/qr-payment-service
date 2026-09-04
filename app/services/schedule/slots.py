@@ -43,14 +43,6 @@ def schedule_count(drogueria_id: int, shift_count: int) -> int:
     return len(schedule_slot_defs(drogueria_id, shift_count))
 
 
-def slot_public(slot: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "slot_no": slot["slot_no"],
-        "label": slot["label"],
-        "sales_shifts": [leg["shift_no"] for leg in slot["legs"]],
-    }
-
-
 def get_slot(
     drogueria_id: int, shift_count: int, slot_no: int
 ) -> dict[str, Any] | None:
