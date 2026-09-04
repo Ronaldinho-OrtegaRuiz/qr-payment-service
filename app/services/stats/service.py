@@ -224,6 +224,20 @@ def _extreme_shifts(
     )
 
 
+def _pick_shift_slot(
+    slots: list[tuple[int, dict[str, Any]]],
+    *,
+    pick_max: bool,
+) -> dict[str, Any] | None:
+    if not slots:
+        return None
+    chosen = max(slots, key=lambda x: Decimal(x[1]["value"])) if pick_max else min(
+        slots, key=lambda x: Decimal(x[1]["value"])
+    )
+    shift_no, point = chosen
+    return {"shift_no": shift_no, **point}
+
+
 def _extreme_shift_days(
     dates: list[date],
     buckets: dict[date, DayBucket],
@@ -328,6 +342,8 @@ def _sales_kpis_month(
     min_day, max_day = _extreme_days(kpi_dates, buckets, sales=True)
     worst_shift, best_shift = _extreme_shifts(shift_totals)
     by_shift = []
+    best_slots: list[tuple[int, dict[str, Any]]] = []
+    worst_slots: list[tuple[int, dict[str, Any]]] = []
     for n in range(1, shift_count + 1):
         filled = shift_filled[n - 1]
         t = shift_totals[n - 1]
@@ -342,6 +358,10 @@ def _sales_kpis_month(
                 "worst_day": worst_day,
             }
         )
+        if best_day:
+            best_slots.append((n, best_day))
+        if worst_day:
+            worst_slots.append((n, worst_day))
     return {
         "total_value": _money(total),
         "avg_value_per_day": _money(total / Decimal(divisor)),
@@ -351,6 +371,8 @@ def _sales_kpis_month(
         "days_empty": max(0, len(kpi_dates) - days_filled),
         "best_shift": best_shift,
         "worst_shift": worst_shift,
+        "best_shift_day": _pick_shift_slot(best_slots, pick_max=True),
+        "worst_shift_day": _pick_shift_slot(worst_slots, pick_max=False),
         "by_shift": by_shift,
         "vs_previous": {
             "value_pct": _pct(total, prev_total),
@@ -619,6 +641,8 @@ def get_year_stats(
 
     worst_shift, best_shift = _extreme_shifts(shift_totals)
     by_shift = []
+    best_slots: list[tuple[int, dict[str, Any]]] = []
+    worst_slots: list[tuple[int, dict[str, Any]]] = []
     for n in range(1, shift_count + 1):
         filled = shift_filled[n - 1]
         t = shift_totals[n - 1]
@@ -633,6 +657,10 @@ def get_year_stats(
                 "worst_month": worst_m,
             }
         )
+        if best_m:
+            best_slots.append((n, best_m))
+        if worst_m:
+            worst_slots.append((n, worst_m))
 
     qr_kpis = {
         "payments_count": qr_count,
@@ -655,6 +683,8 @@ def get_year_stats(
         "worst_month": worst_s,
         "best_shift": best_shift,
         "worst_shift": worst_shift,
+        "best_shift_month": _pick_shift_slot(best_slots, pick_max=True),
+        "worst_shift_month": _pick_shift_slot(worst_slots, pick_max=False),
         "by_shift": by_shift,
         "vs_previous": {"value_pct": _pct(sales_total, prev_sales_total)},
     }
