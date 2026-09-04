@@ -231,6 +231,78 @@ class SalesMonthBlock(BaseModel):
     series: list[SalesDayPoint]
 
 
+class ExtremeEmployee(BaseModel):
+    employee_id: int
+    employee: str
+    value: str
+
+
+class ExtremeEmployeeDay(BaseModel):
+    employee_id: int
+    employee: str
+    date: date
+    value: str
+
+
+class ExtremeEmployeeMonth(BaseModel):
+    employee_id: int
+    employee: str
+    month: int
+    value: str
+
+
+class EmployeeMonthKpi(BaseModel):
+    employee_id: int
+    employee: str
+    assigned_shifts: int
+    covered_shifts: int
+    total: str
+    avg: str | None = None
+    best_day: ExtremeDay | None = None
+    worst_day: ExtremeDay | None = None
+
+
+class EmployeeMonthKpis(BaseModel):
+    assigned_shifts: int
+    covered_shifts: int
+    total_value: str
+    best_employee: ExtremeEmployee | None = None
+    worst_employee: ExtremeEmployee | None = None
+    best_employee_day: ExtremeEmployeeDay | None = None
+    worst_employee_day: ExtremeEmployeeDay | None = None
+    by_employee: list[EmployeeMonthKpi]
+
+
+class EmployeeMonthBlock(BaseModel):
+    kpis: EmployeeMonthKpis
+
+
+class EmployeeYearKpi(BaseModel):
+    employee_id: int
+    employee: str
+    assigned_shifts: int
+    covered_shifts: int
+    total: str
+    avg: str | None = None
+    best_month: ExtremeMonth | None = None
+    worst_month: ExtremeMonth | None = None
+
+
+class EmployeeYearKpis(BaseModel):
+    assigned_shifts: int
+    covered_shifts: int
+    total_value: str
+    best_employee: ExtremeEmployee | None = None
+    worst_employee: ExtremeEmployee | None = None
+    best_employee_month: ExtremeEmployeeMonth | None = None
+    worst_employee_month: ExtremeEmployeeMonth | None = None
+    by_employee: list[EmployeeYearKpi]
+
+
+class EmployeeYearBlock(BaseModel):
+    kpis: EmployeeYearKpis
+
+
 class MonthStatsDto(BaseModel):
     period: Literal["month"]
     year: int
@@ -241,6 +313,7 @@ class MonthStatsDto(BaseModel):
     qr: QrMonthBlock
     sales: SalesMonthBlock
     invoices: InvoiceMonthBlock
+    employees: EmployeeMonthBlock
     compare: CompareDto
 
 
@@ -299,6 +372,7 @@ class YearStatsDto(BaseModel):
     qr: QrYearBlock
     sales: SalesYearBlock
     invoices: InvoiceYearBlock
+    employees: EmployeeYearBlock
     compare: CompareDto
 
 

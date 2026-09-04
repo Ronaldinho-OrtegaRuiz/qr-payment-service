@@ -13,6 +13,7 @@ from app.config import Settings
 from app.services.invoices import repository as invoices_repo
 from app.services.payments.repository import get_payments_timezone
 from app.services.sales import repository as sales_repo
+from app.services.schedule import repository as schedule_repo
 from app.services.stats import repository as payments_repo
 
 ZERO = Decimal("0.00")
@@ -473,6 +474,7 @@ def get_month_stats(
     pay = _index_payments(pay_rows, tz)
     sales = _index_sales(sale_rows)
 
+    from app.services.stats.employee_agg import build_month_employee_block
     from app.services.stats.invoice_agg import build_month_invoice_block
 
     inv_period = invoices_repo.list_invoices(
@@ -491,6 +493,13 @@ def get_month_stats(
         prev=prev,
         today=today,
     )
+    emp_rows = schedule_repo.list_assignments_with_sales(
+        settings,
+        drogueria_id=drogueria_id,
+        date_from=window.first,
+        date_to=window.last,
+    )
+    employees = build_month_employee_block(rows=emp_rows, window=window)
 
     qr_kpis = _qr_kpis_month(pay, window.kpi_dates, pay, prev.kpi_dates)
     sales_kpis = _sales_kpis_month(
@@ -512,6 +521,7 @@ def get_month_stats(
             "series": _sales_series_month(sales, window.series_dates, shift_count),
         },
         "invoices": invoices,
+        "employees": employees,
         "compare": _compare(
             qr_kpis["total_value"],
             sales_kpis["total_value"],
@@ -581,6 +591,7 @@ def get_year_stats(
     pay = _index_payments(pay_rows, tz)
     sales = _index_sales(sale_rows)
 
+    from app.services.stats.employee_agg import build_year_employee_block
     from app.services.stats.invoice_agg import build_year_invoice_block
 
     inv_period = invoices_repo.list_invoices(
@@ -599,6 +610,13 @@ def get_year_stats(
         prev=prev,
         today=today,
     )
+    emp_rows = schedule_repo.list_assignments_with_sales(
+        settings,
+        drogueria_id=drogueria_id,
+        date_from=date(year, 1, 1),
+        date_to=date(year, 12, 31),
+    )
+    employees = build_year_employee_block(rows=emp_rows, window=window)
 
     qr_vals, qr_counts, _ = _month_totals_qr(pay, year, window.series_months)
     prev_qr_vals, prev_qr_counts, _ = _month_totals_qr(pay, year - 1, prev.kpi_months)
@@ -710,6 +728,7 @@ def get_year_stats(
         "qr": {"kpis": qr_kpis, "series": qr_series},
         "sales": {"kpis": sales_kpis, "series": sales_series},
         "invoices": invoices,
+        "employees": employees,
         "compare": _compare(
             qr_kpis["total_value"],
             sales_kpis["total_value"],

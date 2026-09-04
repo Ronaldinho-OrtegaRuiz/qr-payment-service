@@ -10,6 +10,7 @@ def register_http_routes(app: FastAPI) -> None:
     from app.api.routes.invoices import router as invoices_router
     from app.api.routes.payments import router as payments_router
     from app.api.routes.sales import router as sales_router
+    from app.api.routes.schedule import router as schedule_router
     from app.api.routes.stats import router as stats_router
     from app.api.routes.system import router as system_router
 
@@ -18,4 +19,5 @@ def register_http_routes(app: FastAPI) -> None:
     app.include_router(droguerias_router)
     app.include_router(stats_router)
     app.include_router(invoices_router)
+    app.include_router(schedule_router)
     app.include_router(system_router)
