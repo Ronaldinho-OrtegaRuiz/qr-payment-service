@@ -16,6 +16,7 @@ from app.services.sales.service import (
     SalesError,
     set_shift_count,
 )
+from app.services.schedule.slots import schedule_count
 
 router = APIRouter(tags=["droguerias"])
 
@@ -24,6 +25,7 @@ class DrogueriaItem(BaseModel):
     id: int
     name: str
     shift_count: int
+    schedule_count: int
 
 
 class ShiftCountBody(BaseModel):
@@ -46,7 +48,13 @@ async def get_droguerias() -> list[DrogueriaItem]:
         if str(e) == "missing_database_url":
             raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
         raise
-    return [DrogueriaItem(**r) for r in rows]
+    return [
+        DrogueriaItem(
+            **r,
+            schedule_count=schedule_count(int(r["id"]), int(r["shift_count"])),
+        )
+        for r in rows
+    ]
 
 
 @router.patch(
@@ -70,4 +78,7 @@ async def patch_drogueria_shift_count(
         if str(e) == "missing_database_url":
             raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
         raise
-    return DrogueriaItem(**row)
+    return DrogueriaItem(
+        **row,
+        schedule_count=schedule_count(int(row["id"]), int(row["shift_count"])),
+    )

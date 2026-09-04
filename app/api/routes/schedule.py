@@ -41,8 +41,16 @@ class EmployeeNameBody(BaseModel):
         return v
 
 
+class ScheduleSlotMeta(BaseModel):
+    slot_no: int
+    label: str
+    sales_shifts: list[int]
+
+
 class ScheduleShiftItem(BaseModel):
     shift_no: int
+    label: str
+    sales_shifts: list[int]
     employee_id: int | None = None
     employee: str | None = None
 
@@ -55,6 +63,8 @@ class ScheduleDayDto(BaseModel):
 class ScheduleRangeDto(BaseModel):
     drogueria_id: int
     shift_count: int
+    schedule_count: int
+    slots: list[ScheduleSlotMeta]
     date_from: date
     date_to: date
     days: list[ScheduleDayDto]

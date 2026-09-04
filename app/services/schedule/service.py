@@ -10,6 +10,7 @@ from psycopg import errors as pg_errors
 from app.config import Settings
 from app.services.sales.repository import get_drogueria
 from app.services.schedule import repository as repo
+from app.services.schedule.slots import get_slot, schedule_count, schedule_slot_defs, slot_public
 
 MAX_RANGE_DAYS = 92
 MAX_BATCH = 100
@@ -90,12 +91,43 @@ def _check_range(date_from: date, date_to: date) -> None:
         )
 
 
-def _check_shift(shift_no: int, shift_count: int) -> None:
-    if shift_no < 1 or shift_no > shift_count:
+def _check_slot(drogueria_id: int, shift_count: int, slot_no: int) -> dict[str, Any]:
+    slot = get_slot(drogueria_id, shift_count, slot_no)
+    if slot is None:
+        n = schedule_count(drogueria_id, shift_count)
         raise ScheduleError(
             "invalid_shift",
-            f"shift_no must be between 1 and {shift_count}",
+            f"shift_no must be between 1 and {n}",
         )
+    return slot
+
+
+def _apply_slot(
+    settings: Settings,
+    *,
+    drogueria_id: int,
+    work_date: date,
+    slot: dict[str, Any],
+    employee_id: int | None,
+) -> None:
+    for leg in slot["legs"]:
+        day = work_date + timedelta(days=int(leg["day_offset"]))
+        shift_no = int(leg["shift_no"])
+        if employee_id is None:
+            repo.delete_assignment(
+                settings,
+                drogueria_id=drogueria_id,
+                work_date=day,
+                shift_no=shift_no,
+            )
+        else:
+            repo.upsert_assignment(
+                settings,
+                drogueria_id=drogueria_id,
+                work_date=day,
+                shift_no=shift_no,
+                employee_id=employee_id,
+            )
 
 
 def list_schedule_range(
@@ -108,16 +140,18 @@ def list_schedule_range(
     drogueria = _require_drogueria(settings, drogueria_id)
     _check_range(date_from, date_to)
     shift_count = int(drogueria["shift_count"])
+    defs = schedule_slot_defs(drogueria_id, shift_count)
+    extra = max(int(leg["day_offset"]) for slot in defs for leg in slot["legs"])
     rows = repo.list_assignments(
         settings,
         drogueria_id=drogueria_id,
         date_from=date_from,
-        date_to=date_to,
+        date_to=date_to + timedelta(days=extra),
     )
-    by_day: dict[date, dict[int, dict[str, Any]]] = {}
+    by_cell: dict[tuple[date, int], dict[str, Any]] = {}
     for row in rows:
-        d = _as_date(row["work_date"])
-        by_day.setdefault(d, {})[int(row["shift_no"])] = {
+        key = (_as_date(row["work_date"]), int(row["shift_no"]))
+        by_cell[key] = {
             "employee_id": int(row["employee_id"]),
             "employee": row["employee"],
         }
@@ -125,28 +159,30 @@ def list_schedule_range(
     days: list[dict[str, Any]] = []
     cursor = date_from
     while cursor <= date_to:
-        slots = by_day.get(cursor, {})
         shifts = []
-        for n in range(1, shift_count + 1):
-            cell = slots.get(n)
-            if cell:
-                shifts.append(
-                    {
-                        "shift_no": n,
-                        "employee_id": cell["employee_id"],
-                        "employee": cell["employee"],
-                    }
-                )
-            else:
-                shifts.append(
-                    {"shift_no": n, "employee_id": None, "employee": None}
-                )
+        for slot in defs:
+            pub = slot_public(slot)
+            first = slot["legs"][0]
+            cell = by_cell.get(
+                (cursor + timedelta(days=int(first["day_offset"])), int(first["shift_no"]))
+            )
+            shifts.append(
+                {
+                    "shift_no": slot["slot_no"],
+                    "label": pub["label"],
+                    "sales_shifts": pub["sales_shifts"],
+                    "employee_id": cell["employee_id"] if cell else None,
+                    "employee": cell["employee"] if cell else None,
+                }
+            )
         days.append({"date": cursor, "shifts": shifts})
         cursor += timedelta(days=1)
 
     return {
         "drogueria_id": drogueria_id,
         "shift_count": shift_count,
+        "schedule_count": len(defs),
+        "slots": [slot_public(s) for s in defs],
         "date_from": date_from,
         "date_to": date_to,
         "days": days,
@@ -174,15 +210,16 @@ def assign_shift(
     employee_id: int,
 ) -> dict[str, Any]:
     drogueria = _require_drogueria(settings, drogueria_id)
-    _check_shift(shift_no, int(drogueria["shift_count"]))
+    shift_count = int(drogueria["shift_count"])
+    slot = _check_slot(drogueria_id, shift_count, shift_no)
     if repo.get_employee(settings, employee_id) is None:
         raise ScheduleError("employee_not_found", "Employee not found")
     try:
-        repo.upsert_assignment(
+        _apply_slot(
             settings,
             drogueria_id=drogueria_id,
             work_date=work_date,
-            shift_no=shift_no,
+            slot=slot,
             employee_id=employee_id,
         )
     except pg_errors.ForeignKeyViolation as e:
@@ -200,12 +237,13 @@ def clear_shift(
     shift_no: int,
 ) -> dict[str, Any]:
     drogueria = _require_drogueria(settings, drogueria_id)
-    _check_shift(shift_no, int(drogueria["shift_count"]))
-    repo.delete_assignment(
+    slot = _check_slot(drogueria_id, int(drogueria["shift_count"]), shift_no)
+    _apply_slot(
         settings,
         drogueria_id=drogueria_id,
         work_date=work_date,
-        shift_no=shift_no,
+        slot=slot,
+        employee_id=None,
     )
     return _day_after_write(
         settings, drogueria_id=drogueria_id, work_date=work_date
@@ -227,30 +265,23 @@ def save_schedule_batch(
     dates: list[date] = []
     for i, item in enumerate(items):
         work_date = item["work_date"]
-        shift_no = int(item["shift_no"])
-        _check_shift(shift_no, shift_count)
+        slot = _check_slot(drogueria_id, shift_count, int(item["shift_no"]))
         employee_id = item.get("employee_id")
         try:
-            if employee_id is None:
-                repo.delete_assignment(
-                    settings,
-                    drogueria_id=drogueria_id,
-                    work_date=work_date,
-                    shift_no=shift_no,
+            if employee_id is not None and repo.get_employee(
+                settings, int(employee_id)
+            ) is None:
+                raise ScheduleError(
+                    "employee_not_found",
+                    f"Item {i + 1}: employee not found",
                 )
-            else:
-                if repo.get_employee(settings, int(employee_id)) is None:
-                    raise ScheduleError(
-                        "employee_not_found",
-                        f"Item {i + 1}: employee not found",
-                    )
-                repo.upsert_assignment(
-                    settings,
-                    drogueria_id=drogueria_id,
-                    work_date=work_date,
-                    shift_no=shift_no,
-                    employee_id=int(employee_id),
-                )
+            _apply_slot(
+                settings,
+                drogueria_id=drogueria_id,
+                work_date=work_date,
+                slot=slot,
+                employee_id=int(employee_id) if employee_id is not None else None,
+            )
         except ScheduleError:
             raise
         except pg_errors.ForeignKeyViolation as e:
