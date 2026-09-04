@@ -17,6 +17,7 @@ from app.services.invoices.service import (
     get_invoice_dto,
     list_invoices_dto,
     list_suppliers_dto,
+    normalize_invoice_number,
     parse_money,
     update_invoice_fields,
 )
@@ -50,7 +51,14 @@ class InvoiceCreateItem(BaseModel):
     amount: str | Decimal
     status: Literal["pending", "paid"] = "pending"
 
-    @field_validator("invoice_number", "supplier", mode="before")
+    @field_validator("invoice_number", mode="before")
+    @classmethod
+    def normalize_number(cls, v: object) -> object:
+        if v is None:
+            return v
+        return normalize_invoice_number(v)
+
+    @field_validator("supplier", mode="before")
     @classmethod
     def strip_text(cls, v: object) -> object:
         if isinstance(v, str):

@@ -27,6 +27,11 @@ class InvoiceError(ValueError):
         self.message = message
 
 
+def normalize_invoice_number(raw: Any) -> str:
+    """Trim and uppercase: fe4053493 -> FE4053493."""
+    return str(raw or "").strip().upper()
+
+
 def parse_money(raw: Any) -> Decimal:
     """Accepts 150000.99 or 150000,99."""
     if isinstance(raw, Decimal):
@@ -165,7 +170,7 @@ def _insert_one(
             "Send supplier_id or supplier (name)",
         )
 
-    number = str(item.get("invoice_number") or "").strip()
+    number = normalize_invoice_number(item.get("invoice_number"))
     if not number:
         raise InvoiceError("invalid_number", "invoice_number is empty")
 
