@@ -1,0 +1,9 @@
+.git
+.cursor
+.env
+.venv
+venv
+**/__pycache__
+**/*.pyc
+json_ignore
+scripts

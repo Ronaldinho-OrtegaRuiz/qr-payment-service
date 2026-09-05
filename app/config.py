@@ -84,6 +84,11 @@ class Settings:
         "http://localhost:3000",
         "https://drogueriasortegaqrs.vercel.app",
     )
+    competitor_department: str = "Bolivar"
+    competitor_city: str = "Cartagena"
+    competitor_address: str = "Carrera 29 #39-59"
+    competitor_concurrency: int = 2
+    competitor_limit: int = 0
 
 
 def get_settings() -> Settings:
@@ -120,4 +125,13 @@ def get_settings() -> Settings:
         ),
         payments_monitor_enabled=_bool_env("PAYMENTS_MONITOR_ENABLED", monitor_default),
         cors_origins=_cors_origins(),
+        competitor_department=(
+            os.getenv("COMPETITOR_DEPARTMENT", "").strip() or "Bolivar"
+        ),
+        competitor_city=(os.getenv("COMPETITOR_CITY", "").strip() or "Cartagena"),
+        competitor_address=(
+            os.getenv("COMPETITOR_ADDRESS", "").strip() or "Carrera 29 #39-59"
+        ),
+        competitor_concurrency=max(1, min(2, _int_env("COMPETITOR_CONCURRENCY", 2))),
+        competitor_limit=max(0, _int_env("COMPETITOR_LIMIT", 0)),
     )
