@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements-competitors.txt \
 
 COPY app ./app
 
-CMD ["sh", "-c", "uvicorn app.competitor_main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["python", "-m", "app.competitor_main"]
