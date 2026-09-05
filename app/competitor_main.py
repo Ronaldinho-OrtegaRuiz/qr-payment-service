@@ -90,7 +90,7 @@ def _produce_search(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict:
     active, waiting = GATE.snapshot()
     return {"status": "ok", "service": "competitors", "busy": active, "waiting": waiting}
 
