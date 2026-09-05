@@ -10,7 +10,7 @@ from app.services.competitors.runner import search_competitors
 
 def main() -> None:
     q = " ".join(sys.argv[1:]).strip() or "acetaminofen"
-    payload = search_competitors(q, concurrency=2)
+    payload = search_competitors(q, concurrency=6)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
