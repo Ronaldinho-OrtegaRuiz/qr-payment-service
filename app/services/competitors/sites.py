@@ -131,17 +131,18 @@ _JS_VTEX_SUMMARY = """
     }
     name = name.replace(/\\s*Agregar\\s*$/i, '').trim();
     if (name.length < 6 || /^(generica|genérica)$/i.test(name)) continue;
-    const key = name.toLowerCase();
+    const a = card.querySelector('a[href*="/p"], a[href]');
+    const txt = card.innerText || '';
+    const presM = txt.match(/Presentaci[oó]n:\\s*([^\\n]+)/i)
+      || txt.match(/((?:Gramo|Gramos|Tableta|C[aá]psula|Unidad)\\s*a\\s*\\$?\\s*[\\d.]+)/i);
+    const href = a ? (a.href || '').split('?')[0] : '';
+    const key = href || (name.toLowerCase() + '|' + ((presM && (presM[1] || presM[0])) || ''));
     if (seen.has(key)) continue;
     seen.add(key);
-    const a = card.querySelector('a[href*="/p"], a[href]');
     const img = Array.from(card.querySelectorAll('img')).find(i =>
       i.src && !/svg|flag|placeholder|icon|ribbon/i.test(i.src + (i.alt || ''))
     );
     const labEl = card.querySelector('.vtex-product-summary-2-x-productBrand, [class*="productBrand"]');
-    const txt = card.innerText || '';
-    const presM = txt.match(/Presentaci[oó]n:\\s*([^\\n]+)/i)
-      || txt.match(/((?:Gramo|Gramos|Tableta|C[aá]psula|Unidad)\\s*a\\s*\\$?\\s*[\\d.]+)/i);
     out.push({
       name,
       lab: labEl ? (labEl.innerText || '').trim() : null,

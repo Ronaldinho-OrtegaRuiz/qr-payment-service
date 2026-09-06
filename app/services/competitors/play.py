@@ -160,9 +160,15 @@ def extract_cards(page: Page, script: str, limit: int = 0) -> list[CompetitorPro
         raw_price = str(item.get("price") or "")
         raw_pres = str(item.get("presentation") or "").strip() or None
         name = _clean_name(raw_name)
-        if len(name) < 6 or name.lower() in seen:
+        href = str(item.get("url") or "").strip().split("?")[0].rstrip("/").lower()
+        key = (
+            f"url:{href}"
+            if href.startswith("http")
+            else f"{name.lower()}|{(raw_pres or '').lower()}|{money(raw_price) or ''}"
+        )
+        if len(name) < 6 or key in seen:
             continue
-        seen.add(name.lower())
+        seen.add(key)
         out.append(
             CompetitorProduct(
                 name=name,
