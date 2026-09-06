@@ -237,41 +237,27 @@ def _vtex_url(host: str, query: str, page: int = 1) -> str:
     return url
 
 
+# Carga inicial + 4× "Mostrar más" ≈ 5 páginas (~40 productos en La Rebaja).
+_VTEX_MAX_MORE_CLICKS = 4
+
+
 def _collect_vtex(page: Page, host: str, query: str, limit: int) -> list[CompetitorProduct]:
-    collected: list[CompetitorProduct] = []
-    seen: set[str] = set()
-    for n in range(1, 41):
-        page.goto(_vtex_url(host, query, n), wait_until="domcontentloaded")
-        try:
-            page.wait_for_selector(
-                ".vtex-search-result-3-x-galleryItem, .vtex-product-summary-2-x-container",
-                timeout=10000,
-            )
-        except PWTimeout:
-            if n == 1:
-                page.wait_for_timeout(3000)
-            else:
-                break
-        page.wait_for_timeout(1200)
-        batch = gather_all(
-            page,
-            [_JS_VTEX_SUMMARY, _JS_CARDS],
-            limit=0,
-            more=['button:has-text("Mostrar más")', 'button:has-text("Mostrar Más")'],
+    page.goto(_vtex_url(host, query, 1), wait_until="domcontentloaded")
+    try:
+        page.wait_for_selector(
+            ".vtex-search-result-3-x-galleryItem, .vtex-product-summary-2-x-container",
+            timeout=10000,
         )
-        added = 0
-        for prod in batch:
-            key = prod.name.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            collected.append(prod)
-            added += 1
-        if added == 0:
-            break
-        if limit > 0 and len(collected) >= limit:
-            return collected[:limit]
-    return collected
+    except PWTimeout:
+        page.wait_for_timeout(3000)
+    page.wait_for_timeout(1200)
+    return gather_all(
+        page,
+        [_JS_VTEX_SUMMARY, _JS_CARDS],
+        limit=limit,
+        more=['button:has-text("Mostrar más")', 'button:has-text("Mostrar Más")'],
+        max_more_clicks=_VTEX_MAX_MORE_CLICKS,
+    )
 
 
 def _slice(site: str, label: str, products: list[CompetitorProduct], note: str | None = None) -> SiteSlice:

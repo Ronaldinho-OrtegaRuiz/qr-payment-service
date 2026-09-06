@@ -198,11 +198,17 @@ def gather_all(
     *,
     limit: int = 0,
     more: list[str] | None = None,
+    max_more_clicks: int | None = None,
 ) -> list[CompetitorProduct]:
-    """Extrae cards y sigue 'ver más' / scroll hasta que no crezca el listado."""
+    """Extrae cards y sigue 'ver más' / scroll hasta que no crezca el listado.
+
+    max_more_clicks: tope de clics en 'Mostrar más' (None = sin tope extra).
+    Ej. 4 → carga inicial + 4 clics ≈ 5 páginas de contenido.
+    """
     sels = list(more or []) + LOAD_MORE_SELECTORS
     last = -1
     stable = 0
+    clicks_done = 0
     products: list[CompetitorProduct] = []
     for _ in range(MAX_LOAD_ROUNDS):
         products = []
@@ -219,10 +225,18 @@ def gather_all(
         else:
             stable = 0
         last = len(products)
+
+        if max_more_clicks is not None and clicks_done >= max_more_clicks:
+            break
+
         try:
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         except Exception:
             pass
-        click_first(page, sels, timeout=1500)
+        clicked = click_first(page, sels, timeout=1500)
+        if clicked:
+            clicks_done += 1
+        elif max_more_clicks is not None:
+            break
         page.wait_for_timeout(1600)
     return products
