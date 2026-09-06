@@ -237,11 +237,25 @@ def _vtex_url(host: str, query: str, page: int = 1) -> str:
     return url
 
 
-# Carga inicial + 4× "Mostrar más" ≈ 5 páginas (~40 productos en La Rebaja).
+# La Rebaja / Farmanorte: carga inicial + 4× "Mostrar más".
+# Primera página La Rebaja = 8; un clic más deja ~21.
 _VTEX_MAX_MORE_CLICKS = 4
+# Tu Droguería: solo la página inicial (10 visibles; tope de seguridad 50).
+_TDV_FIRST_PAGE_CAP = 50
+# Farmatodo: inicio + 2× "Cargar más". Primera carga = 24 (no 15) → ≈72.
+_FARMATODO_MAX_MORE_CLICKS = 2
+_FARMATODO_PAGE_CAP = 72
 
 
-def _collect_vtex(page: Page, host: str, query: str, limit: int) -> list[CompetitorProduct]:
+def _collect_vtex(
+    page: Page,
+    host: str,
+    query: str,
+    limit: int,
+    *,
+    max_more_clicks: int = _VTEX_MAX_MORE_CLICKS,
+    product_cap: int | None = None,
+) -> list[CompetitorProduct]:
     page.goto(_vtex_url(host, query, 1), wait_until="domcontentloaded")
     try:
         page.wait_for_selector(
@@ -251,12 +265,15 @@ def _collect_vtex(page: Page, host: str, query: str, limit: int) -> list[Competi
     except PWTimeout:
         page.wait_for_timeout(3000)
     page.wait_for_timeout(1200)
+    cap = limit
+    if product_cap:
+        cap = product_cap if limit <= 0 else min(limit, product_cap)
     return gather_all(
         page,
         [_JS_VTEX_SUMMARY, _JS_CARDS],
-        limit=limit,
+        limit=cap,
         more=['button:has-text("Mostrar más")', 'button:has-text("Mostrar Más")'],
-        max_more_clicks=_VTEX_MAX_MORE_CLICKS,
+        max_more_clicks=max_more_clicks,
     )
 
 
@@ -298,14 +315,33 @@ def search_la_rebaja(query: str, limit: int) -> SiteSlice:
     def _go(page: Page) -> list[CompetitorProduct]:
         return _collect_vtex(page, "https://www.larebajavirtual.com", query, limit)
 
-    return _run("la_rebaja", "La Rebaja", _go, query)
+    return _run(
+        "la_rebaja",
+        "La Rebaja",
+        _go,
+        query,
+        note="Carga inicial + 4× Mostrar más (primera página = 8).",
+    )
 
 
 def search_tu_drogueria(query: str, limit: int) -> SiteSlice:
     def _go(page: Page) -> list[CompetitorProduct]:
-        return _collect_vtex(page, "https://www.tudrogueriavirtual.com", query, limit)
+        return _collect_vtex(
+            page,
+            "https://www.tudrogueriavirtual.com",
+            query,
+            limit,
+            max_more_clicks=0,
+            product_cap=_TDV_FIRST_PAGE_CAP,
+        )
 
-    return _run("tu_drogueria", "Tu Droguería Virtual", _go, query)
+    return _run(
+        "tu_drogueria",
+        "Tu Droguería Virtual",
+        _go,
+        query,
+        note="Solo la página inicial (≈10 visibles; tope 50). Sin 'Mostrar más'.",
+    )
 
 
 def _cruz_verde_city(page: Page) -> None:
@@ -390,11 +426,13 @@ def search_farmatodo(query: str, limit: int) -> SiteSlice:
         page.wait_for_timeout(4000)
         click_first(page, ['button:has-text("Cerrar")', '[aria-label="Cerrar"]'], timeout=1500)
         page.wait_for_timeout(2000)
+        cap = _FARMATODO_PAGE_CAP if limit <= 0 else min(limit, _FARMATODO_PAGE_CAP)
         return gather_all(
             page,
             [_JS_FARMATODO, _JS_CARDS],
-            limit=limit,
+            limit=cap,
             more=['button:has-text("Cargar más")'],
+            max_more_clicks=_FARMATODO_MAX_MORE_CLICKS,
         )
 
     return _run(
@@ -402,7 +440,7 @@ def search_farmatodo(query: str, limit: int) -> SiteSlice:
         "Farmatodo",
         _go,
         query,
-        note="SPA: /buscar?product=. Ciudad en home (sale Bogotá). Hay modal de dirección.",
+        note="SPA: /buscar?product=. 3 páginas (inicio + 2× Cargar más; ≈24 por carga).",
     )
 
 

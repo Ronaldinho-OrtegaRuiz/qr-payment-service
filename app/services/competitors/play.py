@@ -202,29 +202,40 @@ def gather_all(
 ) -> list[CompetitorProduct]:
     """Extrae cards y sigue 'ver más' / scroll hasta que no crezca el listado.
 
-    max_more_clicks: tope de clics en 'Mostrar más' (None = sin tope extra).
-    Ej. 4 → carga inicial + 4 clics ≈ 5 páginas de contenido.
+    max_more_clicks:
+      None → sin tope extra de clics
+      0    → solo la carga inicial (reintenta si aún no pintó cards)
+      N    → carga inicial + N clics de 'Mostrar más' / 'Cargar más'
     """
     sels = list(more or []) + LOAD_MORE_SELECTORS
     last = -1
     stable = 0
     clicks_done = 0
     products: list[CompetitorProduct] = []
+    best: list[CompetitorProduct] = []
     for _ in range(MAX_LOAD_ROUNDS):
         products = []
         for script in scripts:
             products = extract_cards(page, script, limit)
             if products:
                 break
+        if products:
+            best = products
         if limit > 0 and len(products) >= limit:
             return products
         if len(products) == last:
             stable += 1
-            if stable >= 2:
+            if stable >= 2 and products:
                 break
         else:
             stable = 0
         last = len(products)
+
+        if max_more_clicks == 0:
+            if products:
+                break
+            page.wait_for_timeout(1600)
+            continue
 
         if max_more_clicks is not None and clicks_done >= max_more_clicks:
             break
@@ -236,7 +247,11 @@ def gather_all(
         clicked = click_first(page, sels, timeout=1500)
         if clicked:
             clicks_done += 1
-        elif max_more_clicks is not None:
+            page.wait_for_timeout(1600)
+            continue
+        # Si ya hay cards y no hay botón, terminamos. Si la SPA aún no pintó,
+        # no abortar: esperar y reintentar (si no, La Rebaja queda en 0).
+        if products:
             break
         page.wait_for_timeout(1600)
-    return products
+    return products or best
