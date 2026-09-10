@@ -199,6 +199,7 @@ def update_invoice(
     status: str | None = None,
     amount: Decimal | None = None,
     supplier_id: int | None = None,
+    due_date: date | None = None,
 ) -> dict[str, Any] | None:
     sets: list[sql.SQL] = []
     params: list[Any] = []
@@ -211,6 +212,9 @@ def update_invoice(
     if supplier_id is not None:
         sets.append(sql.SQL("supplier_id = %s"))
         params.append(supplier_id)
+    if due_date is not None:
+        sets.append(sql.SQL("due_date = %s"))
+        params.append(due_date)
     if not sets:
         return get_invoice(settings, invoice_id)
     params.append(invoice_id)

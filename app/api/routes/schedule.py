@@ -7,13 +7,15 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.config import get_settings
 from app.services.schedule.service import (
     MAX_BATCH,
     ScheduleError,
+    assign_extra,
     assign_shift,
+    clear_extra,
     clear_shift,
     create_employee,
     list_employees_dto,
@@ -47,9 +49,15 @@ class ScheduleShiftItem(BaseModel):
     employee: str | None = None
 
 
+class ScheduleExtraItem(BaseModel):
+    employee_id: int | None = None
+    employee: str | None = None
+
+
 class ScheduleDayDto(BaseModel):
     date: date
     shifts: list[ScheduleShiftItem]
+    extra: ScheduleExtraItem
 
 
 class ScheduleRangeDto(BaseModel):
@@ -67,8 +75,19 @@ class AssignBody(BaseModel):
 
 class ScheduleBatchItem(BaseModel):
     work_date: date
-    shift_no: int = Field(ge=1, le=6)
+    shift_no: int | None = Field(default=None, ge=1, le=6)
+    extra: bool = False
     employee_id: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def shift_or_extra(self) -> ScheduleBatchItem:
+        if self.extra:
+            if self.shift_no is not None:
+                raise ValueError("extra items must not include shift_no")
+            return self
+        if self.shift_no is None:
+            raise ValueError("shift_no is required unless extra=true")
+        return self
 
 
 class ScheduleBatchBody(BaseModel):
@@ -179,6 +198,58 @@ async def put_schedule_batch(body: ScheduleBatchBody) -> ScheduleRangeDto:
             raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
         raise
     return ScheduleRangeDto(**payload)
+
+
+@router.put(
+    "/schedule/{drogueria_id}/{work_date}/extra",
+    response_model=ScheduleDayDto,
+)
+async def put_schedule_extra(
+    drogueria_id: Annotated[int, Path(ge=1)],
+    work_date: date,
+    body: AssignBody,
+) -> ScheduleDayDto:
+    _db_or_503()
+    try:
+        day = await asyncio.to_thread(
+            assign_extra,
+            get_settings(),
+            drogueria_id=drogueria_id,
+            work_date=work_date,
+            employee_id=body.employee_id,
+        )
+    except ScheduleError as e:
+        raise _http(e) from e
+    except ValueError as e:
+        if str(e) == "missing_database_url":
+            raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
+        raise
+    return ScheduleDayDto(**day)
+
+
+@router.delete(
+    "/schedule/{drogueria_id}/{work_date}/extra",
+    response_model=ScheduleDayDto,
+)
+async def delete_schedule_extra(
+    drogueria_id: Annotated[int, Path(ge=1)],
+    work_date: date,
+) -> ScheduleDayDto:
+    _db_or_503()
+    try:
+        day = await asyncio.to_thread(
+            clear_extra,
+            get_settings(),
+            drogueria_id=drogueria_id,
+            work_date=work_date,
+        )
+    except ScheduleError as e:
+        raise _http(e) from e
+    except ValueError as e:
+        if str(e) == "missing_database_url":
+            raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
+        raise
+    return ScheduleDayDto(**day)
 
 
 @router.put(

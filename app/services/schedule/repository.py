@@ -13,6 +13,7 @@ from app.config import Settings
 
 EMPLOYEES_TABLE = "employees"
 ASSIGNMENTS_TABLE = "shift_assignments"
+EXTRAS_TABLE = "schedule_extras"
 
 
 def _require_url(settings: Settings) -> str:
@@ -32,6 +33,10 @@ def _employees_ident() -> sql.Identifier:
 
 def _assignments_ident() -> sql.Identifier:
     return sql.Identifier(ASSIGNMENTS_TABLE)
+
+
+def _extras_ident() -> sql.Identifier:
+    return sql.Identifier(EXTRAS_TABLE)
 
 
 def list_employees(settings: Settings, *, q: str | None = None) -> list[dict[str, Any]]:
@@ -196,6 +201,80 @@ def delete_assignment(
     with psycopg.connect(url) as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(stmt, (drogueria_id, work_date, shift_no))
+            rec = cur.fetchone()
+        conn.commit()
+    return rec is not None
+
+
+def list_extras(
+    settings: Settings,
+    *,
+    drogueria_id: int,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    url = _require_url(settings)
+    stmt = sql.SQL(
+        """
+        SELECT
+            x.id, x.drogueria_id, x.work_date,
+            x.employee_id, e.name AS employee
+        FROM {} x
+        JOIN {} e ON e.id = x.employee_id
+        WHERE x.drogueria_id = %s AND x.work_date >= %s AND x.work_date <= %s
+        ORDER BY x.work_date ASC
+        """
+    ).format(_extras_ident(), _employees_ident())
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(stmt, (drogueria_id, date_from, date_to))
+            return [dict(r) for r in cur.fetchall()]
+
+
+def upsert_extra(
+    settings: Settings,
+    *,
+    drogueria_id: int,
+    work_date: date,
+    employee_id: int,
+) -> dict[str, Any]:
+    url = _require_url(settings)
+    stmt = sql.SQL(
+        """
+        INSERT INTO {} (drogueria_id, work_date, employee_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (drogueria_id, work_date)
+        DO UPDATE SET employee_id = EXCLUDED.employee_id
+        RETURNING id, drogueria_id, work_date, employee_id
+        """
+    ).format(_extras_ident())
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(stmt, (drogueria_id, work_date, employee_id))
+            rec = cur.fetchone()
+        conn.commit()
+    if rec is None:
+        raise RuntimeError("upsert_extra returned no row")
+    return dict(rec)
+
+
+def delete_extra(
+    settings: Settings,
+    *,
+    drogueria_id: int,
+    work_date: date,
+) -> bool:
+    url = _require_url(settings)
+    stmt = sql.SQL(
+        """
+        DELETE FROM {}
+        WHERE drogueria_id = %s AND work_date = %s
+        RETURNING id
+        """
+    ).format(_extras_ident())
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(stmt, (drogueria_id, work_date))
             rec = cur.fetchone()
         conn.commit()
     return rec is not None

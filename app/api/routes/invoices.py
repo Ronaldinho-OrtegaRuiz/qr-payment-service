@@ -90,6 +90,7 @@ class InvoiceUpdateBody(BaseModel):
     amount: str | Decimal | None = None
     supplier_id: int | None = Field(default=None, ge=1)
     supplier: str | None = None
+    due_date: date | None = None
 
     @field_validator("supplier", mode="before")
     @classmethod
@@ -115,8 +116,9 @@ class InvoiceUpdateBody(BaseModel):
             and self.amount is None
             and self.supplier_id is None
             and not self.supplier
+            and self.due_date is None
         ):
-            raise ValueError("Send status, amount and/or supplier")
+            raise ValueError("Send status, amount, supplier and/or due_date")
         return self
 
 
@@ -234,6 +236,7 @@ async def patch_invoice(
             amount=body.amount,
             supplier_id=body.supplier_id,
             supplier=body.supplier,
+            due_date=body.due_date,
         )
     except InvoiceError as e:
         raise _http(e) from e

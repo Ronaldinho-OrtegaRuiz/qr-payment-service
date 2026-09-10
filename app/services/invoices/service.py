@@ -260,6 +260,7 @@ def update_invoice_fields(
     amount: Any = None,
     supplier_id: int | None = None,
     supplier: str | None = None,
+    due_date: date | None = None,
 ) -> dict[str, Any]:
     stored_status: str | None = None
     if status is not None:
@@ -276,10 +277,15 @@ def update_invoice_fields(
         parsed_amount = parse_money(amount)
     name = (supplier or "").strip()
     has_supplier = supplier_id is not None or bool(name)
-    if stored_status is None and parsed_amount is None and not has_supplier:
+    if (
+        stored_status is None
+        and parsed_amount is None
+        and not has_supplier
+        and due_date is None
+    ):
         raise InvoiceError(
             "empty_patch",
-            "Send status, amount and/or supplier",
+            "Send status, amount, supplier and/or due_date",
         )
 
     resolved_sid: int | None = None
@@ -292,6 +298,17 @@ def update_invoice_fields(
                 )
             conn.commit()
 
+    if due_date is not None:
+        current = repo.get_invoice(settings, invoice_id)
+        if current is None:
+            raise InvoiceError("invoice_not_found", "Invoice not found")
+        invoice_date = _as_date(current["invoice_date"])
+        if due_date < invoice_date:
+            raise InvoiceError(
+                "invalid_dates",
+                "due_date cannot be before invoice_date",
+            )
+
     try:
         row = repo.update_invoice(
             settings,
@@ -299,7 +316,13 @@ def update_invoice_fields(
             status=stored_status,
             amount=parsed_amount,
             supplier_id=resolved_sid,
+            due_date=due_date,
         )
+    except pg_errors.CheckViolation as e:
+        raise InvoiceError(
+            "invalid_dates",
+            "due_date cannot be before invoice_date",
+        ) from e
     except pg_errors.UniqueViolation as e:
         raise InvoiceError(
             "duplicate_invoice",
