@@ -60,7 +60,7 @@ async def run_payment_poll_round(
             state.last_uid = await asyncio.to_thread(
                 bootstrap_last_uid,
                 settings,
-                from_email=settings.bancol_notifications_from,
+                from_emails=settings.bancol_notifications_from,
                 search_phrases=settings.bancol_search_phrases,
             )
             bootstrapped = True
@@ -73,7 +73,7 @@ async def run_payment_poll_round(
             entries, state.last_uid = await asyncio.to_thread(
                 poll_uids_after,
                 settings,
-                from_email=settings.bancol_notifications_from,
+                from_emails=settings.bancol_notifications_from,
                 search_phrases=settings.bancol_search_phrases,
                 last_uid=state.last_uid,
             )

@@ -40,8 +40,9 @@ async def lifespan(app: FastAPI):
             name="payment_imap_monitor",
         )
         logger.info(
-            "Monitor de pagos activo (cada %ss, IMAP TEXT OR=%s, droguerías id=%s / secundaria=%s si match %r)",
+            "Monitor de pagos activo (cada %ss, IMAP FROM OR=%s, TEXT OR=%s, droguerías id=%s / secundaria=%s si match %r)",
             s.payments_monitor_interval_sec,
+            s.bancol_notifications_from,
             s.bancol_search_phrases,
             s.drogueria_id,
             s.drogueria_secondary_id,

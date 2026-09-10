@@ -70,17 +70,29 @@ def _or_text_criteria(phrases: Sequence[str]) -> str:
     return clause
 
 
+def _or_from_criteria(from_emails: Sequence[str]) -> str:
+    cleaned = [_imap_escape_atom(e.strip()) for e in from_emails if e and e.strip()]
+    if not cleaned:
+        return 'FROM ""'
+    if len(cleaned) == 1:
+        return f'FROM "{cleaned[0]}"'
+    clause = f'FROM "{cleaned[0]}"'
+    for e in cleaned[1:]:
+        clause = f'(OR {clause} FROM "{e}")'
+    return clause
+
+
 def imap_search_criteria(
     *,
     since_year: int,
-    from_email: str,
+    from_emails: Sequence[str],
     contains_text_phrases: Sequence[str],
     min_uid_exclusive: int | None = None,
 ) -> str:
     since = f"1-Jan-{since_year}"
     text_part = _or_text_criteria(contains_text_phrases)
-    from_esc = _imap_escape_atom(from_email)
-    inner = f"SINCE {since} FROM \"{from_esc}\" {text_part}"
+    from_part = _or_from_criteria(from_emails)
+    inner = f"SINCE {since} {from_part} {text_part}"
     if min_uid_exclusive is not None and min_uid_exclusive >= 0:
         lo = min_uid_exclusive + 1
         return f"(UID {lo}:* {inner})"
@@ -148,7 +160,7 @@ def fetch_rfc822_by_uid(client: imaplib.IMAP4_SSL, uid: str) -> Message | None:
 def poll_uids_after(
     settings: Settings,
     *,
-    from_email: str,
+    from_emails: Sequence[str],
     search_phrases: Sequence[str],
     last_uid: int,
 ) -> tuple[list[dict], int]:
@@ -162,7 +174,7 @@ def poll_uids_after(
     year = datetime.now(timezone.utc).year
     criteria = imap_search_criteria(
         since_year=year,
-        from_email=from_email,
+        from_emails=from_emails,
         contains_text_phrases=search_phrases,
         min_uid_exclusive=last_uid,
     )
@@ -197,14 +209,14 @@ def poll_uids_after(
 def bootstrap_last_uid(
     settings: Settings,
     *,
-    from_email: str,
+    from_emails: Sequence[str],
     search_phrases: Sequence[str],
 ) -> int:
     """Mayor UID que cumple el criterio (sin devolver mensajes). Evita insertar histórico al arrancar."""
     year = datetime.now(timezone.utc).year
     criteria = imap_search_criteria(
         since_year=year,
-        from_email=from_email,
+        from_emails=from_emails,
         contains_text_phrases=search_phrases,
         min_uid_exclusive=None,
     )

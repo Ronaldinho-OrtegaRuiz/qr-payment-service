@@ -40,6 +40,23 @@ def _bancol_search_phrases() -> tuple[str, ...]:
     return ("DROGUERIA RICKY", "yessi")
 
 
+_DEFAULT_BANCOL_FROM: tuple[str, ...] = (
+    "alertasynotificaciones@an.notificacionesbancolombia.com",
+    "alertasynotificaciones@ayn.notificacionesbancolombia.com",
+    "alertasynotificaciones@notificacionesbancolombia.com",
+)
+
+
+def _bancol_notifications_from() -> tuple[str, ...]:
+    """Remitentes Bancolombia (coma-separados). Bancolombia rota el subdominio (an / ayn / sin subdominio)."""
+    multi = (os.getenv("BANCOL_IMAP_FROM") or "").strip()
+    if multi:
+        parts = tuple(p.strip() for p in multi.split(",") if p.strip())
+        if parts:
+            return parts
+    return _DEFAULT_BANCOL_FROM
+
+
 def _login_users_map() -> dict[str, str]:
     """Usuarios permitidos para POST /login: par ADMIN_* y par BASIC_* (cada uno opcional)."""
     out: dict[str, str] = {}
@@ -73,7 +90,7 @@ class Settings:
     imap_host: str = "imap.gmail.com"
     imap_port: int = 993
     database_url: str = ""
-    bancol_notifications_from: str = "alertasynotificaciones@an.notificacionesbancolombia.com"
+    bancol_notifications_from: tuple[str, ...] = _DEFAULT_BANCOL_FROM
     bancol_search_phrases: tuple[str, ...] = ("DROGUERIA RICKY", "yessi")
     drogueria_id: int = 1
     drogueria_secondary_id: int = 2
@@ -110,10 +127,7 @@ def get_settings() -> Settings:
         imap_host=(os.getenv("IMAP_HOST", "imap.gmail.com") or "imap.gmail.com").strip(),
         imap_port=_int_env("IMAP_PORT", 993),
         database_url=db_url,
-        bancol_notifications_from=(
-            os.getenv("BANCOL_IMAP_FROM", "").strip()
-            or "alertasynotificaciones@an.notificacionesbancolombia.com"
-        ),
+        bancol_notifications_from=_bancol_notifications_from(),
         bancol_search_phrases=_bancol_search_phrases(),
         drogueria_id=_int_env("DROGUERIA_ID", 1),
         drogueria_secondary_id=_int_env("DROGUERIA_SECONDARY_ID", 2),
