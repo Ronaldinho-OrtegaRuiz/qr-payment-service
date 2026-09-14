@@ -11,7 +11,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 
-_PUBLIC_PATHS = frozenset({"/login", "/docs", "/openapi.json", "/redoc"})
+_PUBLIC_PATHS = frozenset(
+    {"/login", "/docs", "/openapi.json", "/redoc", "/nequi-payments/ingest"}
+)
 
 
 def _is_public(path: str) -> bool:

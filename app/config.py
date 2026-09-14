@@ -106,6 +106,7 @@ class Settings:
     competitor_address: str = "Carrera 29 #39-59"
     competitor_concurrency: int = 6
     competitor_limit: int = 0
+    nequi_device_key: str = ""
 
 
 def get_settings() -> Settings:
@@ -148,4 +149,5 @@ def get_settings() -> Settings:
         ),
         competitor_concurrency=max(1, min(6, _int_env("COMPETITOR_CONCURRENCY", 6))),
         competitor_limit=max(0, _int_env("COMPETITOR_LIMIT", 0)),
+        nequi_device_key=(os.getenv("NEQUI_DEVICE_KEY", "") or "").strip(),
     )

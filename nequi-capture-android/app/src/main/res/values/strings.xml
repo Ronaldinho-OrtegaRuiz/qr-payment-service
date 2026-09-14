@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Captura Nequi</string>
+    <string name="listener_needed">Activa el acceso a notificaciones para esta app</string>
+    <string name="open_settings">Abrir ajuste de notificaciones</string>
+    <string name="sync_now">Sincronizar ahora</string>
+    <string name="status_ok">Escuchando Nequi</string>
+    <string name="pending_fmt">Pendientes por subir: %1$d</string>
+    <string name="synced_fmt">Última sync: %1$s</string>
+</resources>

@@ -20,4 +20,7 @@ def register_http_routes(app: FastAPI) -> None:
     app.include_router(stats_router)
     app.include_router(invoices_router)
     app.include_router(schedule_router)
+    from app.api.routes.nequi import router as nequi_router
+
+    app.include_router(nequi_router)
     app.include_router(system_router)
