@@ -156,3 +156,8 @@ def assign_nequi(
     if row is None:
         raise NequiError("nequi_not_found", "Nequi payment not found")
     return _dto(row)
+
+
+def delete_nequi(settings: Settings, payment_id: int) -> None:
+    if not repo.delete_payment(settings, payment_id):
+        raise NequiError("nequi_not_found", "Nequi payment not found")

@@ -7,6 +7,7 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
+            KeepAliveService.start(context)
             SyncWorker.enqueuePeriodic(context)
             SyncWorker.enqueueNow(context)
         }

@@ -19,7 +19,8 @@ class SyncWorker(appContext: Context, params: WorkerParameters) :
         if (pending.isEmpty()) return Result.success()
         val sync = ApiClient.sync(applicationContext, pending)
         return if (sync.isSuccess) {
-            store.removeKeys(sync.getOrThrow())
+            // Remember keys forever (capped) so shade re-scans do not re-queue them.
+            store.markSynced(sync.getOrThrow())
             prefs(applicationContext).edit()
                 .putLong(KEY_LAST_SYNC, System.currentTimeMillis())
                 .apply()

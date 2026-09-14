@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.services.nequi.service import (
     NequiError,
     assign_nequi,
+    delete_nequi,
     ingest_batch,
     list_nequi,
 )
@@ -169,3 +170,20 @@ async def patch_nequi_payment(
             raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
         raise
     return NequiItem(**row)
+
+
+@router.delete("/nequi-payments/{payment_id}")
+async def delete_nequi_payment(
+    payment_id: Annotated[int, Path(ge=1)],
+) -> dict[str, Any]:
+    """Borra un pago Nequi (p. ej. transferencias personales no de droguería)."""
+    _db_or_503()
+    try:
+        await asyncio.to_thread(delete_nequi, get_settings(), payment_id)
+    except NequiError as e:
+        raise _http(e) from e
+    except ValueError as e:
+        if str(e) == "missing_database_url":
+            raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
+        raise
+    return {"ok": True, "id": payment_id}

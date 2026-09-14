@@ -173,3 +173,38 @@ def assign_drogueria(
             rec = cur.fetchone()
         conn.commit()
     return dict(rec) if rec else None
+
+
+def delete_payment(settings: Settings, payment_id: int) -> bool:
+    url = _require_url(settings)
+    stmt = sql.SQL("DELETE FROM {} WHERE id = %s RETURNING id").format(_table())
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(stmt, (payment_id,))
+            rec = cur.fetchone()
+        conn.commit()
+    return rec is not None
+
+
+def list_in_range(
+    settings: Settings,
+    *,
+    drogueria_id: int,
+    start: datetime,
+    end: datetime,
+) -> list[dict[str, Any]]:
+    """Filas notified_at/value/client con notified_at en [start, end) y drogueria asignada."""
+    url = _require_url(settings)
+    stmt = sql.SQL(
+        """
+        SELECT notified_at AS date, value, client
+        FROM {}
+        WHERE notified_at >= %s AND notified_at < %s
+          AND drogueria_id = %s
+        ORDER BY notified_at ASC
+        """
+    ).format(_table())
+    with psycopg.connect(url) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(stmt, (start, end, drogueria_id))
+            return [dict(r) for r in cur.fetchall()]

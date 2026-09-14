@@ -12,28 +12,47 @@ data class PendingNequi(
     val rawText: String,
 )
 
+/**
+ * Pending queue + permanent-ish set of already-synced notification keys.
+ * Prevents re-uploading the same shade notifications every time the listener reconnects.
+ */
 class PendingStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun upsert(item: PendingNequi) {
-        val map = loadMap()
+    fun upsert(item: PendingNequi): Boolean {
+        if (wasSynced(item.notificationKey)) return false
+        val map = loadPending()
+        if (map.containsKey(item.notificationKey)) return false
         map[item.notificationKey] = item
-        saveMap(map)
+        savePending(map)
+        return true
     }
 
-    fun all(): List<PendingNequi> = loadMap().values.sortedBy { it.notifiedAtMillis }
+    fun all(): List<PendingNequi> = loadPending().values.sortedBy { it.notifiedAtMillis }
 
-    fun removeKeys(keys: Collection<String>) {
+    fun markSynced(keys: Collection<String>) {
         if (keys.isEmpty()) return
-        val map = loadMap()
-        keys.forEach { map.remove(it) }
-        saveMap(map)
+        val pending = loadPending()
+        keys.forEach { pending.remove(it) }
+        savePending(pending)
+
+        val synced = loadSynced().toMutableList()
+        val seen = synced.toHashSet()
+        for (k in keys) {
+            if (seen.add(k)) synced.add(k)
+        }
+        while (synced.size > MAX_SYNCED) {
+            synced.removeAt(0)
+        }
+        prefs.edit().putString(KEY_SYNCED, JSONArray(synced).toString()).apply()
     }
 
-    fun pendingCount(): Int = loadMap().size
+    fun wasSynced(key: String): Boolean = loadSynced().contains(key)
 
-    private fun loadMap(): LinkedHashMap<String, PendingNequi> {
-        val raw = prefs.getString(KEY, "[]") ?: "[]"
+    fun pendingCount(): Int = loadPending().size
+
+    private fun loadPending(): LinkedHashMap<String, PendingNequi> {
+        val raw = prefs.getString(KEY_PENDING, "[]") ?: "[]"
         val arr = JSONArray(raw)
         val out = LinkedHashMap<String, PendingNequi>()
         for (i in 0 until arr.length()) {
@@ -50,7 +69,7 @@ class PendingStore(context: Context) {
         return out
     }
 
-    private fun saveMap(map: Map<String, PendingNequi>) {
+    private fun savePending(map: Map<String, PendingNequi>) {
         val arr = JSONArray()
         map.values.forEach { item ->
             arr.put(
@@ -62,11 +81,21 @@ class PendingStore(context: Context) {
                     .put("raw_text", item.rawText),
             )
         }
-        prefs.edit().putString(KEY, arr.toString()).apply()
+        prefs.edit().putString(KEY_PENDING, arr.toString()).apply()
+    }
+
+    private fun loadSynced(): List<String> {
+        val raw = prefs.getString(KEY_SYNCED, "[]") ?: "[]"
+        val arr = JSONArray(raw)
+        return buildList {
+            for (i in 0 until arr.length()) add(arr.getString(i))
+        }
     }
 
     companion object {
         private const val PREFS = "nequi_pending"
-        private const val KEY = "items"
+        private const val KEY_PENDING = "items"
+        private const val KEY_SYNCED = "synced_keys"
+        private const val MAX_SYNCED = 500
     }
 }

@@ -38,6 +38,20 @@ Respuesta:
 }
 ```
 
+### Catálogo de droguerías (para el selector)
+
+`GET /droguerias`  
+Auth: Bearer
+
+```json
+[
+  { "id": 1, "name": "Ricky", "shift_count": 2, "schedule_count": 2 },
+  { "id": 2, "name": "Yessi", "shift_count": 2, "schedule_count": 2 }
+]
+```
+
+En el UI: mostrar `name`, al asignar mandar `drogueria_id` = `id`.
+
 ### Asignar droguería
 
 `PATCH /nequi-payments/{id}`
@@ -50,6 +64,84 @@ Quitar asignación:
 ```json
 { "drogueria_id": null }
 ```
+
+### Borrar pago Nequi
+
+`DELETE /nequi-payments/{id}`  
+Auth: Bearer
+
+Para transferencias personales / que no son de la droguería.
+
+Respuesta `200`:
+```json
+{ "ok": true, "id": 1 }
+```
+
+`404` si no existe.
+
+### Estadísticas Nequi
+
+`GET /stats/nequi?drogueria_id=1&period=month&year=2026&month=9`  
+`GET /stats/nequi?drogueria_id=1&period=year&year=2026`
+
+Auth: Bearer. Misma forma de fechas que `/stats` (QR).  
+Solo cuenta pagos **ya asignados** a esa droguería (`drogueria_id`). Los sin asignar no entran.
+
+**Mes** (`period=month`):
+```json
+{
+  "period": "month",
+  "year": 2026,
+  "month": 9,
+  "drogueria_id": 1,
+  "divisor_days": 14,
+  "kpis": {
+    "payments_count": 12,
+    "total_value": "350000.00",
+    "avg_payments_per_day": "0.86",
+    "avg_value_per_day": "25000.00",
+    "avg_value_per_payment": "29166.67",
+    "min_day": { "date": "2026-09-03", "value": "5000.00" },
+    "max_day": { "date": "2026-09-10", "value": "80000.00" },
+    "days_with_sales": 8,
+    "days_empty": 6,
+    "unique_clients": 7,
+    "vs_previous": { "payments_pct": "10.00", "value_pct": "-5.50" }
+  },
+  "series": [
+    { "date": "2026-09-01", "count": 0, "value": "0.00" },
+    { "date": "2026-09-02", "count": 2, "value": "15000.00" }
+  ]
+}
+```
+
+**Año** (`period=year`):
+```json
+{
+  "period": "year",
+  "year": 2026,
+  "drogueria_id": 1,
+  "divisor_months": 9,
+  "kpis": {
+    "payments_count": 90,
+    "total_value": "2100000.00",
+    "avg_payments_per_month": "10.00",
+    "avg_value_per_month": "233333.33",
+    "avg_value_per_payment": "23333.33",
+    "best_month": { "month": 3, "value": "400000.00" },
+    "worst_month": { "month": 1, "value": "50000.00" },
+    "unique_clients": 40,
+    "vs_previous": { "payments_pct": null, "value_pct": null }
+  },
+  "series": [
+    { "month": 1, "count": 5, "value": "50000.00" },
+    { "month": 2, "count": 8, "value": "120000.00" }
+  ]
+}
+```
+
+Defaults: si omites `year`/`month`, usa fecha actual en `PAYMENTS_TZ`.  
+`vs_previous.*.pct` puede ser `null` si el periodo anterior fue 0.
 
 ### Ingest (solo app teléfono)
 
@@ -73,5 +165,7 @@ Header: `X-Nequi-Device-Key: <secret>`
 
 Idempotente por `notification_key`.
 
-### Stats
-Tabla aparte de QR. En stats del front: agrupar por `drogueria_id` (y bucket “sin asignar” si quieren). La lista operativa es **una sola tabla**.
+### Notas UI
+- Lista operativa: **una sola tabla** Nequi.
+- Stats: endpoint aparte `/stats/nequi` (no mezclado con QR en `/stats`).
+- Para que cuenten en stats hay que **asignar** droguería antes.

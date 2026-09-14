@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.services.payments.repository import get_payments_timezone
 from app.services.stats.service import StatsError, get_month_stats, get_year_stats
+from app.services.nequi.stats import get_nequi_month_stats, get_nequi_year_stats
 
 router = APIRouter(tags=["stats"])
 
@@ -376,6 +377,51 @@ class YearStatsDto(BaseModel):
     compare: CompareDto
 
 
+class NequiMonthKpis(BaseModel):
+    payments_count: int
+    total_value: str
+    avg_payments_per_day: str
+    avg_value_per_day: str
+    avg_value_per_payment: str | None = None
+    min_day: ExtremeDay | None = None
+    max_day: ExtremeDay | None = None
+    days_with_sales: int
+    days_empty: int
+    unique_clients: int
+    vs_previous: VsPreviousDto
+
+
+class NequiMonthStatsDto(BaseModel):
+    period: Literal["month"]
+    year: int
+    month: int
+    drogueria_id: int
+    divisor_days: int
+    kpis: NequiMonthKpis
+    series: list[QrDayPoint]
+
+
+class NequiYearKpis(BaseModel):
+    payments_count: int
+    total_value: str
+    avg_payments_per_month: str
+    avg_value_per_month: str
+    avg_value_per_payment: str | None = None
+    best_month: ExtremeMonth | None = None
+    worst_month: ExtremeMonth | None = None
+    unique_clients: int
+    vs_previous: VsPreviousDto
+
+
+class NequiYearStatsDto(BaseModel):
+    period: Literal["year"]
+    year: int
+    drogueria_id: int
+    divisor_months: int
+    kpis: NequiYearKpis
+    series: list[QrYearPoint]
+
+
 def _http_from_stats_error(e: StatsError) -> HTTPException:
     status = 404 if e.code == "drogueria_not_found" else 400
     return HTTPException(status_code=status, detail=e.message)
@@ -424,6 +470,58 @@ async def get_stats(
             year=y,
         )
         return YearStatsDto(**payload)
+    except StatsError as e:
+        raise _http_from_stats_error(e) from e
+    except ValueError as e:
+        if str(e) == "missing_database_url":
+            raise HTTPException(status_code=503, detail="Falta DATABASE_URL") from e
+        raise
+
+
+@router.get(
+    "/stats/nequi",
+    response_model=NequiMonthStatsDto | NequiYearStatsDto,
+    response_model_exclude_unset=False,
+)
+async def get_nequi_stats(
+    drogueria_id: Annotated[int, Query(ge=1)],
+    period: Annotated[Literal["month", "year"], Query()],
+    year: Annotated[
+        int | None,
+        Query(ge=1900, le=2100, description="Año; default: actual en PAYMENTS_TZ"),
+    ] = None,
+    month: Annotated[
+        int | None,
+        Query(ge=1, le=12, description="Requerido si period=month; default: mes actual"),
+    ] = None,
+) -> NequiMonthStatsDto | NequiYearStatsDto:
+    """Stats solo de Nequi asignados a la droguería (no incluye sin asignar)."""
+    settings = get_settings()
+    if not settings.database_url.strip():
+        raise HTTPException(status_code=503, detail="Falta DATABASE_URL en .env")
+
+    tz = get_payments_timezone()
+    today = datetime.now(tz).date()
+    y = year if year is not None else today.year
+
+    try:
+        if period == "month":
+            m = month if month is not None else today.month
+            payload = await asyncio.to_thread(
+                get_nequi_month_stats,
+                settings,
+                drogueria_id=drogueria_id,
+                year=y,
+                month=m,
+            )
+            return NequiMonthStatsDto(**payload)
+        payload = await asyncio.to_thread(
+            get_nequi_year_stats,
+            settings,
+            drogueria_id=drogueria_id,
+            year=y,
+        )
+        return NequiYearStatsDto(**payload)
     except StatsError as e:
         raise _http_from_stats_error(e) from e
     except ValueError as e:
