@@ -17,3 +17,7 @@ scripts/sql/
 
 json_ignore/*
 !json_ignore/.gitkeep
+
+# Local / no desplegar
+docs/
+nequi-capture-android/

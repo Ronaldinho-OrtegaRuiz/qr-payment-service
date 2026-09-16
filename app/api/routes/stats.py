@@ -11,7 +11,12 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.services.payments.repository import get_payments_timezone
-from app.services.stats.service import StatsError, get_month_stats, get_year_stats
+from app.services.stats.service import (
+    StatsError,
+    get_month_stats,
+    get_year_stats,
+    normalize_stats_sections,
+)
 from app.services.nequi.stats import get_nequi_month_stats, get_nequi_year_stats
 
 router = APIRouter(tags=["stats"])
@@ -311,11 +316,11 @@ class MonthStatsDto(BaseModel):
     drogueria_id: int
     shift_count: int
     divisor_days: int
-    qr: QrMonthBlock
-    sales: SalesMonthBlock
-    invoices: InvoiceMonthBlock
-    employees: EmployeeMonthBlock
-    compare: CompareDto
+    qr: QrMonthBlock | None = None
+    sales: SalesMonthBlock | None = None
+    invoices: InvoiceMonthBlock | None = None
+    employees: EmployeeMonthBlock | None = None
+    compare: CompareDto | None = None
 
 
 class QrYearPoint(BaseModel):
@@ -370,11 +375,11 @@ class YearStatsDto(BaseModel):
     drogueria_id: int
     shift_count: int
     divisor_months: int
-    qr: QrYearBlock
-    sales: SalesYearBlock
-    invoices: InvoiceYearBlock
-    employees: EmployeeYearBlock
-    compare: CompareDto
+    qr: QrYearBlock | None = None
+    sales: SalesYearBlock | None = None
+    invoices: InvoiceYearBlock | None = None
+    employees: EmployeeYearBlock | None = None
+    compare: CompareDto | None = None
 
 
 class NequiMonthKpis(BaseModel):
@@ -443,6 +448,16 @@ async def get_stats(
         int | None,
         Query(ge=1, le=12, description="Requerido si period=month; default: mes actual"),
     ] = None,
+    sections: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Secciones a calcular, separadas por coma: "
+                "qr,sales,invoices,employees,compare. "
+                "Omítelo para todas (comportamiento anterior)."
+            ),
+        ),
+    ] = None,
 ) -> MonthStatsDto | YearStatsDto:
     settings = get_settings()
     if not settings.database_url.strip():
@@ -453,6 +468,14 @@ async def get_stats(
     y = year if year is not None else today.year
 
     try:
+        section_set = None
+        if sections is not None and sections.strip():
+            section_set = {
+                part.strip().lower()
+                for part in sections.split(",")
+                if part.strip()
+            }
+            normalize_stats_sections(section_set)  # validate early
         if period == "month":
             m = month if month is not None else today.month
             payload = await asyncio.to_thread(
@@ -461,6 +484,7 @@ async def get_stats(
                 drogueria_id=drogueria_id,
                 year=y,
                 month=m,
+                sections=section_set,
             )
             return MonthStatsDto(**payload)
         payload = await asyncio.to_thread(
@@ -468,6 +492,7 @@ async def get_stats(
             settings,
             drogueria_id=drogueria_id,
             year=y,
+            sections=section_set,
         )
         return YearStatsDto(**payload)
     except StatsError as e:

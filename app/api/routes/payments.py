@@ -30,6 +30,12 @@ class PaymentItem(BaseModel):
 class PaymentListResponse(BaseModel):
     items: list[PaymentItem]
     total: int
+    value_total: str = Field(
+        description=(
+            "Suma de value con los mismos filtros (todas las páginas). "
+            "Con on_date es el total del día."
+        ),
+    )
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
     pages: int = Field(ge=0)
@@ -113,7 +119,7 @@ async def get_payments_list(
         raise HTTPException(status_code=503, detail="Falta DATABASE_URL en .env")
 
     try:
-        items, total = await asyncio.to_thread(
+        items, total, value_total = await asyncio.to_thread(
             list_payments,
             settings,
             page=page,
@@ -136,6 +142,7 @@ async def get_payments_list(
     return PaymentListResponse(
         items=[PaymentItem(**x) for x in items],
         total=total,
+        value_total=value_total,
         page=page,
         page_size=page_size,
         pages=pages,

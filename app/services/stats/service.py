@@ -20,12 +20,28 @@ ZERO = Decimal("0.00")
 CENT = Decimal("0.01")
 HUNDREDTH = Decimal("0.01")
 
+STATS_SECTIONS = frozenset({"qr", "sales", "invoices", "employees", "compare"})
+
 
 class StatsError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def normalize_stats_sections(raw: set[str] | None) -> set[str]:
+    """None/empty → all sections. Unknown names → StatsError."""
+    if not raw:
+        return set(STATS_SECTIONS)
+    unknown = sorted(raw - STATS_SECTIONS)
+    if unknown:
+        raise StatsError(
+            "invalid_sections",
+            f"sections inválidas: {', '.join(unknown)}. "
+            f"Usa: {', '.join(sorted(STATS_SECTIONS))}",
+        )
+    return set(raw)
 
 
 def _money(value: Decimal) -> str:
@@ -448,10 +464,17 @@ def get_month_stats(
     drogueria_id: int,
     year: int,
     month: int,
+    sections: set[str] | None = None,
 ) -> dict[str, Any]:
     drogueria = sales_repo.get_drogueria(settings, drogueria_id)
     if drogueria is None:
         raise StatsError("drogueria_not_found", "Droguería no encontrada")
+
+    wanted = normalize_stats_sections(sections)
+    need_qr = "qr" in wanted or "compare" in wanted
+    need_sales = "sales" in wanted or "compare" in wanted
+    need_inv = "invoices" in wanted or "compare" in wanted
+    need_emp = "employees" in wanted
 
     tz = get_payments_timezone()
     today = datetime.now(tz).date()
@@ -459,76 +482,108 @@ def get_month_stats(
     prev = build_prev_month_window(window, today, tz)
     shift_count = int(drogueria["shift_count"])
 
-    pay_rows = payments_repo.list_payments_in_range(
-        settings,
-        drogueria_id=drogueria_id,
-        start=prev.start,
-        end=window.end,
-    )
-    sale_rows = sales_repo.list_shift_sales_in_range(
-        settings,
-        drogueria_id=drogueria_id,
-        date_from=prev.first,
-        date_to=window.last,
-    )
-    pay = _index_payments(pay_rows, tz)
-    sales = _index_sales(sale_rows)
+    pay: dict[date, DayBucket] = {}
+    sales: dict[date, DayBucket] = {}
+    if need_qr:
+        pay_rows = payments_repo.list_payments_in_range(
+            settings,
+            drogueria_id=drogueria_id,
+            start=prev.start,
+            end=window.end,
+        )
+        pay = _index_payments(pay_rows, tz)
+    if need_sales:
+        sale_rows = sales_repo.list_shift_sales_in_range(
+            settings,
+            drogueria_id=drogueria_id,
+            date_from=prev.first,
+            date_to=window.last,
+        )
+        sales = _index_sales(sale_rows)
 
-    from app.services.stats.employee_agg import build_month_employee_block
-    from app.services.stats.invoice_agg import build_month_invoice_block
+    invoices = None
+    if need_inv:
+        from app.services.stats.invoice_agg import build_month_invoice_block
 
-    inv_period = invoices_repo.list_invoices(
-        settings,
-        drogueria_id=drogueria_id,
-        date_from=prev.first,
-        date_to=window.last,
-    )
-    inv_open = invoices_repo.list_open_invoices(
-        settings, drogueria_id=drogueria_id
-    )
-    invoices = build_month_invoice_block(
-        period_rows=inv_period,
-        open_rows=inv_open,
-        window=window,
-        prev=prev,
-        today=today,
-    )
-    emp_rows = schedule_repo.list_assignments_with_sales(
-        settings,
-        drogueria_id=drogueria_id,
-        date_from=window.first,
-        date_to=window.last,
-    )
-    employees = build_month_employee_block(rows=emp_rows, window=window)
+        inv_period = invoices_repo.list_invoices(
+            settings,
+            drogueria_id=drogueria_id,
+            date_from=prev.first,
+            date_to=window.last,
+        )
+        inv_open = invoices_repo.list_open_invoices(
+            settings, drogueria_id=drogueria_id
+        )
+        invoices = build_month_invoice_block(
+            period_rows=inv_period,
+            open_rows=inv_open,
+            window=window,
+            prev=prev,
+            today=today,
+        )
 
-    qr_kpis = _qr_kpis_month(pay, window.kpi_dates, pay, prev.kpi_dates)
-    sales_kpis = _sales_kpis_month(
-        sales, window.kpi_dates, sales, prev.kpi_dates, shift_count
+    employees = None
+    if need_emp:
+        from app.services.stats.employee_agg import build_month_employee_block
+
+        emp_rows = schedule_repo.list_assignments_with_sales(
+            settings,
+            drogueria_id=drogueria_id,
+            date_from=window.first,
+            date_to=window.last,
+        )
+        employees = build_month_employee_block(rows=emp_rows, window=window)
+
+    qr_kpis = (
+        _qr_kpis_month(pay, window.kpi_dates, pay, prev.kpi_dates) if need_qr else None
     )
-    return {
+    sales_kpis = (
+        _sales_kpis_month(
+            sales, window.kpi_dates, sales, prev.kpi_dates, shift_count
+        )
+        if need_sales
+        else None
+    )
+
+    out: dict[str, Any] = {
         "period": "month",
         "year": year,
         "month": month,
         "drogueria_id": drogueria_id,
         "shift_count": shift_count,
         "divisor_days": len(window.kpi_dates),
-        "qr": {
+        "qr": None,
+        "sales": None,
+        "invoices": None,
+        "employees": None,
+        "compare": None,
+    }
+    if "qr" in wanted and qr_kpis is not None:
+        out["qr"] = {
             "kpis": qr_kpis,
             "series": _qr_series_month(pay, window.series_dates),
-        },
-        "sales": {
+        }
+    if "sales" in wanted and sales_kpis is not None:
+        out["sales"] = {
             "kpis": sales_kpis,
             "series": _sales_series_month(sales, window.series_dates, shift_count),
-        },
-        "invoices": invoices,
-        "employees": employees,
-        "compare": _compare(
+        }
+    if "invoices" in wanted:
+        out["invoices"] = invoices
+    if "employees" in wanted:
+        out["employees"] = employees
+    if "compare" in wanted and qr_kpis is not None and sales_kpis is not None:
+        out["compare"] = _compare(
             qr_kpis["total_value"],
             sales_kpis["total_value"],
-            invoices_issued=invoices["kpis"]["issued_total"],
-            invoices_open_now=invoices["snapshot"]["open_now_total"],
-        ),
-    }
+            invoices_issued=(invoices or {}).get("kpis", {}).get(
+                "issued_total", "0.00"
+            ),
+            invoices_open_now=(invoices or {})
+            .get("snapshot", {})
+            .get("open_now_total", "0.00"),
+        )
+    return out
 
 
 def _month_totals_qr(
@@ -562,10 +617,17 @@ def get_year_stats(
     *,
     drogueria_id: int,
     year: int,
+    sections: set[str] | None = None,
 ) -> dict[str, Any]:
     drogueria = sales_repo.get_drogueria(settings, drogueria_id)
     if drogueria is None:
         raise StatsError("drogueria_not_found", "Droguería no encontrada")
+
+    wanted = normalize_stats_sections(sections)
+    need_qr = "qr" in wanted or "compare" in wanted
+    need_sales = "sales" in wanted or "compare" in wanted
+    need_inv = "invoices" in wanted or "compare" in wanted
+    need_emp = "employees" in wanted
 
     tz = get_payments_timezone()
     today = datetime.now(tz).date()
@@ -575,164 +637,199 @@ def get_year_stats(
     if year == today.year:
         prev.kpi_months = list(window.kpi_months)
     shift_count = int(drogueria["shift_count"])
-
-    pay_rows = payments_repo.list_payments_in_range(
-        settings,
-        drogueria_id=drogueria_id,
-        start=prev.start,
-        end=window.end,
-    )
-    sale_rows = sales_repo.list_shift_sales_in_range(
-        settings,
-        drogueria_id=drogueria_id,
-        date_from=date(year - 1, 1, 1),
-        date_to=date(year, 12, 31),
-    )
-    pay = _index_payments(pay_rows, tz)
-    sales = _index_sales(sale_rows)
-
-    from app.services.stats.employee_agg import build_year_employee_block
-    from app.services.stats.invoice_agg import build_year_invoice_block
-
-    inv_period = invoices_repo.list_invoices(
-        settings,
-        drogueria_id=drogueria_id,
-        date_from=date(year - 1, 1, 1),
-        date_to=date(year, 12, 31),
-    )
-    inv_open = invoices_repo.list_open_invoices(
-        settings, drogueria_id=drogueria_id
-    )
-    invoices = build_year_invoice_block(
-        period_rows=inv_period,
-        open_rows=inv_open,
-        window=window,
-        prev=prev,
-        today=today,
-    )
-    emp_rows = schedule_repo.list_assignments_with_sales(
-        settings,
-        drogueria_id=drogueria_id,
-        date_from=date(year, 1, 1),
-        date_to=date(year, 12, 31),
-    )
-    employees = build_year_employee_block(rows=emp_rows, window=window)
-
-    qr_vals, qr_counts, _ = _month_totals_qr(pay, year, window.series_months)
-    prev_qr_vals, prev_qr_counts, _ = _month_totals_qr(pay, year - 1, prev.kpi_months)
-    sales_vals = _month_totals_sales(sales, year, window.series_months)
-    prev_sales_vals = _month_totals_sales(sales, year - 1, prev.kpi_months)
-
-    qr_count = sum(qr_counts[m] for m in window.kpi_months)
-    qr_total = sum((qr_vals[m] for m in window.kpi_months), ZERO)
-    prev_qr_count = sum(prev_qr_counts.get(m, 0) for m in prev.kpi_months)
-    prev_qr_total = sum((prev_qr_vals.get(m, ZERO) for m in prev.kpi_months), ZERO)
-
-    clients: set[str] = set()
-    for d, b in pay.items():
-        if d.year == year and d.month in window.kpi_months:
-            clients |= b.clients
-
-    sales_total = sum((sales_vals[m] for m in window.kpi_months), ZERO)
-    prev_sales_total = sum(
-        (prev_sales_vals.get(m, ZERO) for m in prev.kpi_months), ZERO
-    )
-
     divisor = len(window.kpi_months) or 1
-    worst_qr, best_qr = _extreme_months(window.kpi_months, qr_vals)
-    worst_s, best_s = _extreme_months(window.kpi_months, sales_vals)
 
-    shift_totals = [ZERO] * shift_count
-    shift_filled = [0] * shift_count
-    shift_month_vals: list[dict[int, Decimal]] = [
-        {m: ZERO for m in window.kpi_months} for _ in range(shift_count)
-    ]
-    for d, b in sales.items():
-        if d.year != year or d.month not in window.kpi_months:
-            continue
-        for n in range(1, shift_count + 1):
-            amt = b.shifts.get(n)
-            if amt is not None and amt > 0:
-                shift_totals[n - 1] += amt
-                shift_filled[n - 1] += 1
-                shift_month_vals[n - 1][d.month] += amt
-
-    worst_shift, best_shift = _extreme_shifts(shift_totals)
-    by_shift = []
-    best_slots: list[tuple[int, dict[str, Any]]] = []
-    worst_slots: list[tuple[int, dict[str, Any]]] = []
-    for n in range(1, shift_count + 1):
-        filled = shift_filled[n - 1]
-        t = shift_totals[n - 1]
-        worst_m, best_m = _extreme_months(window.kpi_months, shift_month_vals[n - 1])
-        by_shift.append(
-            {
-                "shift_no": n,
-                "total": _money(t),
-                "avg": _money(t / Decimal(filled)) if filled else None,
-                "filled_days": filled,
-                "best_month": best_m,
-                "worst_month": worst_m,
-            }
+    pay: dict[date, DayBucket] = {}
+    sales: dict[date, DayBucket] = {}
+    if need_qr:
+        pay_rows = payments_repo.list_payments_in_range(
+            settings,
+            drogueria_id=drogueria_id,
+            start=prev.start,
+            end=window.end,
         )
-        if best_m:
-            best_slots.append((n, best_m))
-        if worst_m:
-            worst_slots.append((n, worst_m))
+        pay = _index_payments(pay_rows, tz)
+    if need_sales:
+        sale_rows = sales_repo.list_shift_sales_in_range(
+            settings,
+            drogueria_id=drogueria_id,
+            date_from=date(year - 1, 1, 1),
+            date_to=date(year, 12, 31),
+        )
+        sales = _index_sales(sale_rows)
 
-    qr_kpis = {
-        "payments_count": qr_count,
-        "total_value": _money(qr_total),
-        "avg_payments_per_month": _ratio(Decimal(qr_count) / Decimal(divisor)),
-        "avg_value_per_month": _money(qr_total / Decimal(divisor)),
-        "avg_value_per_payment": _money(qr_total / Decimal(qr_count)) if qr_count else None,
-        "best_month": best_qr,
-        "worst_month": worst_qr,
-        "unique_clients": len(clients),
-        "vs_previous": {
-            "payments_pct": _pct(Decimal(qr_count), Decimal(prev_qr_count)),
-            "value_pct": _pct(qr_total, prev_qr_total),
-        },
-    }
-    sales_kpis = {
-        "total_value": _money(sales_total),
-        "avg_value_per_month": _money(sales_total / Decimal(divisor)),
-        "best_month": best_s,
-        "worst_month": worst_s,
-        "best_shift": best_shift,
-        "worst_shift": worst_shift,
-        "best_shift_month": _pick_shift_slot(best_slots, pick_max=True),
-        "worst_shift_month": _pick_shift_slot(worst_slots, pick_max=False),
-        "by_shift": by_shift,
-        "vs_previous": {"value_pct": _pct(sales_total, prev_sales_total)},
-    }
+    invoices = None
+    if need_inv:
+        from app.services.stats.invoice_agg import build_year_invoice_block
 
-    qr_series = [
-        {
-            "month": m,
-            "count": qr_counts[m],
-            "value": _money(qr_vals[m]),
+        inv_period = invoices_repo.list_invoices(
+            settings,
+            drogueria_id=drogueria_id,
+            date_from=date(year - 1, 1, 1),
+            date_to=date(year, 12, 31),
+        )
+        inv_open = invoices_repo.list_open_invoices(
+            settings, drogueria_id=drogueria_id
+        )
+        invoices = build_year_invoice_block(
+            period_rows=inv_period,
+            open_rows=inv_open,
+            window=window,
+            prev=prev,
+            today=today,
+        )
+
+    employees = None
+    if need_emp:
+        from app.services.stats.employee_agg import build_year_employee_block
+
+        emp_rows = schedule_repo.list_assignments_with_sales(
+            settings,
+            drogueria_id=drogueria_id,
+            date_from=date(year, 1, 1),
+            date_to=date(year, 12, 31),
+        )
+        employees = build_year_employee_block(rows=emp_rows, window=window)
+
+    qr_kpis = None
+    qr_series = None
+    if need_qr:
+        qr_vals, qr_counts, _ = _month_totals_qr(pay, year, window.series_months)
+        prev_qr_vals, prev_qr_counts, _ = _month_totals_qr(
+            pay, year - 1, prev.kpi_months
+        )
+        qr_count = sum(qr_counts[m] for m in window.kpi_months)
+        qr_total = sum((qr_vals[m] for m in window.kpi_months), ZERO)
+        prev_qr_count = sum(prev_qr_counts.get(m, 0) for m in prev.kpi_months)
+        prev_qr_total = sum(
+            (prev_qr_vals.get(m, ZERO) for m in prev.kpi_months), ZERO
+        )
+        clients: set[str] = set()
+        for d, b in pay.items():
+            if d.year == year and d.month in window.kpi_months:
+                clients |= b.clients
+        worst_qr, best_qr = _extreme_months(window.kpi_months, qr_vals)
+        qr_kpis = {
+            "payments_count": qr_count,
+            "total_value": _money(qr_total),
+            "avg_payments_per_month": _ratio(Decimal(qr_count) / Decimal(divisor)),
+            "avg_value_per_month": _money(qr_total / Decimal(divisor)),
+            "avg_value_per_payment": (
+                _money(qr_total / Decimal(qr_count)) if qr_count else None
+            ),
+            "best_month": best_qr,
+            "worst_month": worst_qr,
+            "unique_clients": len(clients),
+            "vs_previous": {
+                "payments_pct": _pct(Decimal(qr_count), Decimal(prev_qr_count)),
+                "value_pct": _pct(qr_total, prev_qr_total),
+            },
         }
-        for m in window.series_months
-    ]
-    sales_series = [
-        {"month": m, "value": _money(sales_vals[m])} for m in window.series_months
-    ]
+        qr_series = [
+            {
+                "month": m,
+                "count": qr_counts[m],
+                "value": _money(qr_vals[m]),
+            }
+            for m in window.series_months
+        ]
 
-    return {
+    sales_kpis = None
+    sales_series = None
+    if need_sales:
+        sales_vals = _month_totals_sales(sales, year, window.series_months)
+        prev_sales_vals = _month_totals_sales(sales, year - 1, prev.kpi_months)
+        sales_total = sum((sales_vals[m] for m in window.kpi_months), ZERO)
+        prev_sales_total = sum(
+            (prev_sales_vals.get(m, ZERO) for m in prev.kpi_months), ZERO
+        )
+        worst_s, best_s = _extreme_months(window.kpi_months, sales_vals)
+
+        shift_totals = [ZERO] * shift_count
+        shift_filled = [0] * shift_count
+        shift_month_vals: list[dict[int, Decimal]] = [
+            {m: ZERO for m in window.kpi_months} for _ in range(shift_count)
+        ]
+        for d, b in sales.items():
+            if d.year != year or d.month not in window.kpi_months:
+                continue
+            for n in range(1, shift_count + 1):
+                amt = b.shifts.get(n)
+                if amt is not None and amt > 0:
+                    shift_totals[n - 1] += amt
+                    shift_filled[n - 1] += 1
+                    shift_month_vals[n - 1][d.month] += amt
+
+        worst_shift, best_shift = _extreme_shifts(shift_totals)
+        by_shift = []
+        best_slots: list[tuple[int, dict[str, Any]]] = []
+        worst_slots: list[tuple[int, dict[str, Any]]] = []
+        for n in range(1, shift_count + 1):
+            filled = shift_filled[n - 1]
+            t = shift_totals[n - 1]
+            worst_m, best_m = _extreme_months(
+                window.kpi_months, shift_month_vals[n - 1]
+            )
+            by_shift.append(
+                {
+                    "shift_no": n,
+                    "total": _money(t),
+                    "avg": _money(t / Decimal(filled)) if filled else None,
+                    "filled_days": filled,
+                    "best_month": best_m,
+                    "worst_month": worst_m,
+                }
+            )
+            if best_m:
+                best_slots.append((n, best_m))
+            if worst_m:
+                worst_slots.append((n, worst_m))
+
+        sales_kpis = {
+            "total_value": _money(sales_total),
+            "avg_value_per_month": _money(sales_total / Decimal(divisor)),
+            "best_month": best_s,
+            "worst_month": worst_s,
+            "best_shift": best_shift,
+            "worst_shift": worst_shift,
+            "best_shift_month": _pick_shift_slot(best_slots, pick_max=True),
+            "worst_shift_month": _pick_shift_slot(worst_slots, pick_max=False),
+            "by_shift": by_shift,
+            "vs_previous": {"value_pct": _pct(sales_total, prev_sales_total)},
+        }
+        sales_series = [
+            {"month": m, "value": _money(sales_vals[m])} for m in window.series_months
+        ]
+
+    out: dict[str, Any] = {
         "period": "year",
         "year": year,
         "drogueria_id": drogueria_id,
         "shift_count": shift_count,
         "divisor_months": divisor,
-        "qr": {"kpis": qr_kpis, "series": qr_series},
-        "sales": {"kpis": sales_kpis, "series": sales_series},
-        "invoices": invoices,
-        "employees": employees,
-        "compare": _compare(
+        "qr": None,
+        "sales": None,
+        "invoices": None,
+        "employees": None,
+        "compare": None,
+    }
+    if "qr" in wanted and qr_kpis is not None:
+        out["qr"] = {"kpis": qr_kpis, "series": qr_series}
+    if "sales" in wanted and sales_kpis is not None:
+        out["sales"] = {"kpis": sales_kpis, "series": sales_series}
+    if "invoices" in wanted:
+        out["invoices"] = invoices
+    if "employees" in wanted:
+        out["employees"] = employees
+    if "compare" in wanted and qr_kpis is not None and sales_kpis is not None:
+        out["compare"] = _compare(
             qr_kpis["total_value"],
             sales_kpis["total_value"],
-            invoices_issued=invoices["kpis"]["issued_total"],
-            invoices_open_now=invoices["snapshot"]["open_now_total"],
-        ),
-    }
+            invoices_issued=(invoices or {}).get("kpis", {}).get(
+                "issued_total", "0.00"
+            ),
+            invoices_open_now=(invoices or {})
+            .get("snapshot", {})
+            .get("open_now_total", "0.00"),
+        )
+    return out

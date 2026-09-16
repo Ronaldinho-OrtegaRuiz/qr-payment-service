@@ -36,11 +36,13 @@ def list_payments(
     value_min: Decimal | None = None,
     value_max: Decimal | None = None,
     drogueria_id: int | None = None,
-) -> tuple[list[dict[str, Any]], int]:
+) -> tuple[list[dict[str, Any]], int, str]:
     """
     Filtros de fecha interpretados en PAYMENTS_TZ (ej. America/Bogota), aplicados a la columna `date`.
     on_date tiene prioridad: ignora date_from / date_to ese día.
     Orden: primero por `date` (sort); si value_sort no es None, desempate por columna `value`.
+    Returns (items, row_count, value_total) where value_total is SUM(value) for the
+    same filters (all pages), useful as day total when on_date is set.
     """
     url = (settings.database_url or "").strip()
     if not url:
@@ -89,9 +91,15 @@ def list_payments(
         )
     offset = (page - 1) * page_size
 
-    count_stmt = sql.SQL("SELECT COUNT(*)::bigint FROM {} WHERE {}").format(
-        table, where_clause
-    )
+    count_stmt = sql.SQL(
+        """
+        SELECT
+          COUNT(*)::bigint AS count,
+          COALESCE(SUM(value), 0)::numeric AS value_total
+        FROM {}
+        WHERE {}
+        """
+    ).format(table, where_clause)
     select_stmt = sql.SQL(
         """
         SELECT id, drogueria_id, message_id, client, value, {}
@@ -105,14 +113,17 @@ def list_payments(
     with psycopg.connect(url) as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(count_stmt, params)
-            total_row = cur.fetchone()
-            total = int(total_row["count"]) if total_row else 0
+            agg = cur.fetchone() or {}
+            total = int(agg.get("count") or 0)
+            value_total = Decimal(str(agg.get("value_total") or 0)).quantize(
+                Decimal("0.01")
+            )
 
             cur.execute(select_stmt, [*params, page_size, offset])
             rows = cur.fetchall()
 
     items = [_serialize_row(dict(r)) for r in rows]
-    return items, total
+    return items, total, str(value_total)
 
 
 def list_payments_for_month(
