@@ -65,12 +65,6 @@ class ExtremeShiftDay(BaseModel):
     value: str
 
 
-class ExtremeShiftMonth(BaseModel):
-    shift_no: int
-    month: int
-    value: str
-
-
 class ShiftMonthKpi(BaseModel):
     shift_no: int
     total: str
@@ -87,6 +81,8 @@ class ShiftYearKpi(BaseModel):
     filled_days: int
     best_month: ExtremeMonth | None = None
     worst_month: ExtremeMonth | None = None
+    best_day: ExtremeDay | None = None
+    worst_day: ExtremeDay | None = None
 
 
 class QrMonthKpis(BaseModel):
@@ -353,8 +349,8 @@ class SalesYearKpis(BaseModel):
     worst_month: ExtremeMonth | None = None
     best_shift: ExtremeShift | None = None
     worst_shift: ExtremeShift | None = None
-    best_shift_month: ExtremeShiftMonth | None = None
-    worst_shift_month: ExtremeShiftMonth | None = None
+    best_shift_day: ExtremeShiftDay | None = None
+    worst_shift_day: ExtremeShiftDay | None = None
     by_shift: list[ShiftYearKpi]
     vs_previous: VsPreviousDto
 

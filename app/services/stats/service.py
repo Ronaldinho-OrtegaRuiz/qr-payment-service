@@ -760,6 +760,11 @@ def get_year_stats(
                     shift_filled[n - 1] += 1
                     shift_month_vals[n - 1][d.month] += amt
 
+        kpi_last = today if year == today.year else date(year, 12, 31)
+        kpi_dates = [
+            date(year, 1, 1) + timedelta(days=i)
+            for i in range((kpi_last - date(year, 1, 1)).days + 1)
+        ]
         worst_shift, best_shift = _extreme_shifts(shift_totals)
         by_shift = []
         best_slots: list[tuple[int, dict[str, Any]]] = []
@@ -770,6 +775,7 @@ def get_year_stats(
             worst_m, best_m = _extreme_months(
                 window.kpi_months, shift_month_vals[n - 1]
             )
+            worst_day, best_day = _extreme_shift_days(kpi_dates, sales, n)
             by_shift.append(
                 {
                     "shift_no": n,
@@ -778,12 +784,14 @@ def get_year_stats(
                     "filled_days": filled,
                     "best_month": best_m,
                     "worst_month": worst_m,
+                    "best_day": best_day,
+                    "worst_day": worst_day,
                 }
             )
-            if best_m:
-                best_slots.append((n, best_m))
-            if worst_m:
-                worst_slots.append((n, worst_m))
+            if best_day:
+                best_slots.append((n, best_day))
+            if worst_day:
+                worst_slots.append((n, worst_day))
 
         sales_kpis = {
             "total_value": _money(sales_total),
@@ -792,8 +800,8 @@ def get_year_stats(
             "worst_month": worst_s,
             "best_shift": best_shift,
             "worst_shift": worst_shift,
-            "best_shift_month": _pick_shift_slot(best_slots, pick_max=True),
-            "worst_shift_month": _pick_shift_slot(worst_slots, pick_max=False),
+            "best_shift_day": _pick_shift_slot(best_slots, pick_max=True),
+            "worst_shift_day": _pick_shift_slot(worst_slots, pick_max=False),
             "by_shift": by_shift,
             "vs_previous": {"value_pct": _pct(sales_total, prev_sales_total)},
         }
