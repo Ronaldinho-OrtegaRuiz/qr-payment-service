@@ -765,6 +765,9 @@ def get_year_stats(
             date(year, 1, 1) + timedelta(days=i)
             for i in range((kpi_last - date(year, 1, 1)).days + 1)
         ]
+        worst_day_total, best_day_total = _extreme_days(
+            kpi_dates, sales, sales=True
+        )
         worst_shift, best_shift = _extreme_shifts(shift_totals)
         by_shift = []
         best_slots: list[tuple[int, dict[str, Any]]] = []
@@ -800,6 +803,8 @@ def get_year_stats(
             "worst_month": worst_s,
             "best_shift": best_shift,
             "worst_shift": worst_shift,
+            "best_day": best_day_total,
+            "worst_day": worst_day_total,
             "best_shift_day": _pick_shift_slot(best_slots, pick_max=True),
             "worst_shift_day": _pick_shift_slot(worst_slots, pick_max=False),
             "by_shift": by_shift,

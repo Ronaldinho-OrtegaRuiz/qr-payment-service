@@ -349,6 +349,8 @@ class SalesYearKpis(BaseModel):
     worst_month: ExtremeMonth | None = None
     best_shift: ExtremeShift | None = None
     worst_shift: ExtremeShift | None = None
+    best_day: ExtremeDay | None = None
+    worst_day: ExtremeDay | None = None
     best_shift_day: ExtremeShiftDay | None = None
     worst_shift_day: ExtremeShiftDay | None = None
     by_shift: list[ShiftYearKpi]
